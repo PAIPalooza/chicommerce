@@ -1,0 +1,107 @@
+[
+  {
+    "title": "[P1] Store base product information",
+    "body": "As a system, I want to store base product information so that the front-end can list products.\n\nAcceptance Criteria:\n- GET /products returns active products with id, name, description, base_price, media.\n- Data matches database records.",
+    "labels": ["epic:product-template-management", "user-story"]
+  },
+  {
+    "title": "[P2] Define product template",
+    "body": "As a studio designer, I want to define a template for a product so that visitors can customize it.\n\nAcceptance Criteria:\n- POST /templates accepts product_id, version, and JSON definition.\n- Version uniqueness enforced; defaults marked.",
+    "labels": ["epic:product-template-management", "user-story"]
+  },
+  {
+    "title": "[P3] Retrieve default product template",
+    "body": "As a visitor, I want to see the default template when I fetch a product by ID so that I can customize it.\n\nAcceptance Criteria:\n- GET /products/{id} returns product plus its default template JSON.\n- 404 if product not found or no default template.",
+    "labels": ["epic:product-template-management", "user-story"]
+  },
+  {
+    "title": "[P4] Manage option sets",
+    "body": "As a studio designer, I want to manage option sets so that visitors can choose from predefined options.\n\nAcceptance Criteria:\n- CRUD /optionsets endpoints linked to a product.\n- Options enforce uniqueness per set.",
+    "labels": ["epic:product-template-management", "user-story"]
+  },
+  {
+    "title": "[C1] Start customization session",
+    "body": "As a visitor, I want to start a customization session so that I can save my in-progress design.\n\nAcceptance Criteria:\n- POST /sessions returns sessionId and sessionKey.\n- Session contains product_id, template_id, and empty options.",
+    "labels": ["epic:customization-engine", "user-story"]
+  },
+  {
+    "title": "[C2] Retrieve session state",
+    "body": "As a visitor, I want to retrieve my session state so that I can resume customizing where I left off.\n\nAcceptance Criteria:\n- GET /sessions/{sessionId} returns current options and template version.\n- 404 if invalid or expired session.",
+    "labels": ["epic:customization-engine", "user-story"]
+  },
+  {
+    "title": "[C3] Validate customization inputs",
+    "body": "As a visitor, I want my customization inputs validated so that I can’t exceed template constraints.\n\nAcceptance Criteria:\n- Invalid inputs return 400 with error details.\n- Valid inputs update session record.",
+    "labels": ["epic:customization-engine", "user-story"]
+  },
+  {
+    "title": "[C4] Request design preview",
+    "body": "As a visitor, I want to request a preview of my design so that I can see the final product.\n\nAcceptance Criteria:\n- POST /sessions/{sessionId}/preview enqueues render job and returns job ID.\n- GET /previews/{jobId} returns URL when ready.",
+    "labels": ["epic:customization-engine", "user-story"]
+  },
+  {
+    "title": "[K1] Add customized item to cart",
+    "body": "As a visitor, I want to add a customized item to my cart so that I can purchase multiple items.\n\nAcceptance Criteria:\n- POST /cart/items with sessionKey and item payload returns updated cart.\n- Cart persists via cookie or header.",
+    "labels": ["epic:cart-pricing-engine", "user-story"]
+  },
+  {
+    "title": "[K2] View cart items",
+    "body": "As a visitor, I want to view my cart so that I can review items before checkout.\n\nAcceptance Criteria:\n- GET /cart returns items with template_snapshot, options, quantity, unit_price, line_total.\n- Empty cart returns [].",  
+    "labels": ["epic:cart-pricing-engine", "user-story"]
+  },
+  {
+    "title": "[K3] Calculate product pricing",
+    "body": "As a visitor, I want product pricing recalculated so that I see surcharges for options and taxes.\n\nAcceptance Criteria:\n- Price = base_price + sum(option.price_delta) + tax + shipping.\n- Taxes/shipping via stub with fixed rates.",
+    "labels": ["epic:cart-pricing-engine", "user-story"]
+  },
+  {
+    "title": "[O1] Submit cart for checkout",
+    "body": "As a visitor, I want to submit my cart for checkout so that an order is created and payment is processed.\n\nAcceptance Criteria:\n- POST /checkout validates cart, creates Order in state created, calls payment API, returns orderId and payment token.",
+    "labels": ["epic:checkout-order-management", "user-story"]
+  },
+  {
+    "title": "[O2] Handle payment webhooks",
+    "body": "As a system, I want to handle payment webhooks so that order status updates to paid or failed.\n\nAcceptance Criteria:\n- On success webhook, Order.status updated to paid.\n- On failure, status remains created with retry logic.",
+    "labels": ["epic:checkout-order-management", "user-story"]
+  },
+  {
+    "title": "[O3] Track order status",
+    "body": "As an operations manager, I want to track order status so that I know production and shipping stages.\n\nAcceptance Criteria:\n- GET /orders/{orderId} returns status, createdAt, trackingUrl.\n- Status flows through defined lifecycle.",
+    "labels": ["epic:checkout-order-management", "user-story"]
+  },
+  {
+    "title": "[O4] Fulfillment webhook integration",
+    "body": "As a fulfillment system, I want to receive order payload via webhook so that I can begin production.\n\nAcceptance Criteria:\n- POST /webhooks/fulfillment accepts order JSON and returns 200.\n- Failures retried or logged to WebhookLog.",
+    "labels": ["epic:checkout-order-management", "user-story"]
+  },
+  {
+    "title": "[A1] Secure admin product/template APIs",
+    "body": "As an admin, I want to manage products and templates via API keys so that I can update the catalog.\n\nAcceptance Criteria:\n- Admin endpoints require X-API-Key header.\n- 403 returned if key missing or invalid.",
+    "labels": ["epic:admin-reporting", "user-story"]
+  },
+  {
+    "title": "[A2] Retrieve sales reports",
+    "body": "As an admin, I want to retrieve sales reports so that I can analyze revenue.\n\nAcceptance Criteria:\n- GET /reports/sales?start&end returns totals grouped by product_id and template_version.",
+    "labels": ["epic:admin-reporting", "user-story"]
+  },
+  {
+    "title": "[A3] Audit webhook logs",
+    "body": "As an admin, I want to audit webhook logs so that I can troubleshoot delivery failures.\n\nAcceptance Criteria:\n- GET /webhooklogs?event=order.created returns entries with response_status and sent_at.\n- Supports pagination.",
+    "labels": ["epic:admin-reporting", "user-story"]
+  },
+  {
+    "title": "[N1] Cache product and template data",
+    "body": "As a DevOps engineer, I want to add caching for product list and templates so that read latency drops.\n\nAcceptance Criteria:\n- Redis cache expires after 60s.\n- 95% of GET /products calls <100ms under load.",
+    "labels": ["epic:non-functional", "user-story"]
+  },
+  {
+    "title": "[N2] Enforce TLS and API-key auth",
+    "body": "As a security engineer, I want to enforce TLS and API-key auth on admin routes so that data is secure.\n\nAcceptance Criteria:\n- All endpoints use HTTPS.\n- Admin endpoints reject non-API-key requests.",
+    "labels": ["epic:non-functional", "user-story"]
+  },
+  {
+    "title": "[N3] Emit observability metrics",
+    "body": "As a monitoring engineer, I want to emit metrics on queue depth and error rates so that I can alert.\n\nAcceptance Criteria:\n- Expose /metrics endpoint.\n- Counters for render_jobs, failed_webhooks, HTTP 5xx rate.",
+    "labels": ["epic:non-functional", "user-story"]
+  }
+]
