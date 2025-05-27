@@ -1,5 +1,7 @@
 """
 Integration tests for Template API endpoints.
+
+Following BDD (Behavior-Driven Development) patterns and TDD principles.
 """
 import pytest
 import json
@@ -8,15 +10,7 @@ from fastapi import status
 
 from app.models.product import Product
 from app.models.template import Template, CustomizationZone
-
-
-@pytest.fixture
-def sample_product_id(db_session, sample_product_data):
-    """Fixture to create a product and return its ID."""
-    product = Product(**sample_product_data)
-    db_session.add(product)
-    db_session.commit()
-    return product.id
+from app.schemas.template import TemplateCreate, TemplateUpdate
 
 
 class TestTemplatesAPI:
@@ -26,41 +20,26 @@ class TestTemplatesAPI:
     Following BDD pattern with descriptive test method names.
     """
     
-    def test_get_templates_by_product_returns_templates(self, client, db_session, sample_product_id):
+    # --- List Templates ---
+    
+    def test_list_templates_returns_templates_for_product(self, client, sample_template):
         """
         GIVEN a product with templates
         WHEN the GET /templates endpoint is called with product_id
         THEN the templates for that product should be returned
         """
-        # Arrange
-        template1 = Template(
-            product_id=sample_product_id,
-            version=1,
-            definition={"zones": {"text_front": {"type": "text"}}},
-            is_default=True
-        )
-        template2 = Template(
-            product_id=sample_product_id,
-            version=2,
-            definition={"zones": {"text_front": {"type": "text"}, "image_back": {"type": "image"}}},
-            is_default=False
-        )
-        db_session.add(template1)
-        db_session.add(template2)
-        db_session.commit()
-        
         # Act
-        response = client.get(f"/api/v1/templates/?product_id={sample_product_id}")
+        response = client.get(f"/api/v1/templates/?product_id={sample_template.product_id}")
         
         # Assert
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert len(data) == 2
-        versions = [t["version"] for t in data]
-        assert 1 in versions
-        assert 2 in versions
+        assert len(data) == 1
+        assert data[0]["id"] == str(sample_template.id)
+        assert data[0]["version"] == 1
+        assert data[0]["is_default"] is True
     
-    def test_get_templates_without_product_id_returns_400(self, client):
+    def test_list_templates_requires_product_id(self, client):
         """
         GIVEN no product_id parameter
         WHEN the GET /templates endpoint is called
@@ -71,16 +50,42 @@ class TestTemplatesAPI:
         
         # Assert
         assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "product_id" in response.json()["detail"]
     
-    def test_create_template_creates_and_returns_template(self, client, sample_product_id, sample_template_data):
+    # --- Create Template ---
+    
+    def test_create_template_creates_and_returns_template(self, client, sample_product):
         """
         GIVEN valid template data
         WHEN the POST /templates endpoint is called
         THEN a new template should be created and returned
         """
         # Arrange
-        template_data = sample_template_data
-        template_data["product_id"] = sample_product_id
+        template_data = {
+            "product_id": str(sample_product.id),
+            "version": 1,
+            "definition": {
+                "zones": {
+                    "text_1": {"type": "text", "max_length": 100},
+                    "image_1": {"type": "image", "formats": ["png", "jpg"]}
+                }
+            },
+            "is_default": True,
+            "customization_zones": [
+                {
+                    "key": "text_1",
+                    "type": "text",
+                    "config": {"max_length": 100},
+                    "order_index": 0
+                },
+                {
+                    "key": "image_1",
+                    "type": "image",
+                    "config": {"formats": ["png", "jpg"]},
+                    "order_index": 1
+                }
+            ]
+        }
         
         # Act
         response = client.post(
@@ -90,15 +95,199 @@ class TestTemplatesAPI:
         )
         
         # Assert
-        assert response.status_code == status.HTTP_201_CREATED
+        assert response.status_code == status.HTTP_201_CREATED, response.text
         data = response.json()
-        assert data["product_id"] == str(sample_product_id)
-        assert data["version"] == template_data["version"]
-        assert data["definition"] == template_data["definition"]
-        assert data["is_default"] == template_data["is_default"]
+        assert data["product_id"] == str(sample_product.id)
+        assert data["version"] == 1
+        assert data["is_default"] is True
+        assert len(data["customization_zones"]) == 2
         assert "id" in data
         assert "created_at" in data
         assert "updated_at" in data
+    
+    def test_create_template_validates_duplicate_version(self, client, sample_template):
+        """
+        GIVEN a template with a version that already exists for the product
+        WHEN the POST /templates endpoint is called
+        THEN a 400 Bad Request response should be returned
+        """
+        # Arrange
+        template_data = {
+            "product_id": str(sample_template.product_id),
+            "version": 1,  # Duplicate version
+            "definition": {"zones": {"test": {"type": "text"}}},
+            "is_default": False
+        }
+        
+        # Act
+        response = client.post(
+            "/api/v1/templates/",
+            json=template_data,
+            headers={"X-API-Key": "test-admin-key"}
+        )
+        
+        # Assert
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "already exists for this product" in response.json()["detail"]
+    
+    # --- Get Template ---
+    
+    def test_get_template_returns_template(self, client, sample_template):
+        """
+        GIVEN an existing template ID
+        WHEN the GET /templates/{template_id} endpoint is called
+        THEN the template should be returned
+        """
+        # Act
+        response = client.get(f"/api/v1/templates/{sample_template.id}")
+        
+        # Assert
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["id"] == str(sample_template.id)
+        assert data["version"] == sample_template.version
+        assert "customization_zones" in data
+    
+    def test_get_nonexistent_template_returns_404(self, client):
+        """
+        GIVEN a non-existent template ID
+        WHEN the GET /templates/{template_id} endpoint is called
+        THEN a 404 Not Found response should be returned
+        """
+        # Arrange
+        non_existent_id = "00000000-0000-0000-0000-000000000000"
+        
+        # Act
+        response = client.get(f"/api/v1/templates/{non_existent_id}")
+        
+        # Assert
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+    
+    # --- Update Template ---
+    
+    def test_update_template_updates_and_returns_template(self, client, sample_template):
+        """
+        GIVEN an existing template and update data
+        WHEN the PUT /templates/{template_id} endpoint is called
+        THEN the template should be updated and returned
+        """
+        # Arrange
+        update_data = {
+            "version": 2,
+            "is_default": False,
+            "definition": {"zones": {"updated_zone": {"type": "text"}}},
+            "customization_zones": [
+                {"key": "updated_zone", "type": "text", "order_index": 0}
+            ]
+        }
+        
+        # Act
+        response = client.put(
+            f"/api/v1/templates/{sample_template.id}",
+            json=update_data,
+            headers={"X-API-Key": "test-admin-key"}
+        )
+        
+        # Assert
+        assert response.status_code == status.HTTP_200_OK
+        data = response.json()
+        assert data["version"] == 2
+        assert data["is_default"] is False
+        assert "updated_zone" in data["definition"]["zones"]
+        assert len(data["customization_zones"]) == 1
+        assert data["customization_zones"][0]["key"] == "updated_zone"
+    
+    # --- Delete Template ---
+    
+    def test_delete_template_deletes_template(self, client, db_session, sample_template):
+        """
+        GIVEN an existing template ID
+        WHEN the DELETE /templates/{template_id} endpoint is called
+        THEN the template should be deleted
+        """
+        # Arrange - create another template for the same product
+        another_template = Template(
+            product_id=sample_template.product_id,
+            version=2,
+            definition={"zones": {"another_zone": {"type": "text"}}},
+            is_default=False
+        )
+        db_session.add(another_template)
+        db_session.commit()
+        
+        # Act
+        response = client.delete(
+            f"/api/v1/templates/{sample_template.id}",
+            headers={"X-API-Key": "test-admin-key"}
+        )
+        
+        # Assert
+        assert response.status_code == status.HTTP_200_OK
+        assert response.json()["message"] == "Template deleted successfully"
+        
+        # Verify template is deleted
+        response = client.get(f"/api/v1/templates/{sample_template.id}")
+        assert response.status_code == status.HTTP_404_NOT_FOUND
+    
+    def test_delete_last_template_returns_error(self, client, sample_template):
+        """
+        GIVEN the last template for a product
+        WHEN the DELETE /templates/{template_id} endpoint is called
+        THEN a 400 Bad Request response should be returned
+        """
+        # Act
+        response = client.delete(
+            f"/api/v1/templates/{sample_template.id}",
+            headers={"X-API-Key": "test-admin-key"}
+        )
+        
+        # Assert
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert "Cannot delete the last template" in response.json()["detail"]
+    
+    # --- Authorization ---
+    
+    def test_create_template_requires_authentication(self, client, sample_product):
+        """
+        GIVEN no API key
+        WHEN the POST /templates endpoint is called
+        THEN a 401 Unauthorized response should be returned
+        """
+        # Act
+        response = client.post(
+            "/api/v1/templates/",
+            json={"product_id": str(sample_product.id), "version": 1, "definition": {"zones": {}}},
+        )
+        
+        # Assert
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    
+    def test_update_template_requires_authentication(self, client, sample_template):
+        """
+        GIVEN no API key
+        WHEN the PUT /templates/{template_id} endpoint is called
+        THEN a 401 Unauthorized response should be returned
+        """
+        # Act
+        response = client.put(
+            f"/api/v1/templates/{sample_template.id}",
+            json={"version": 2}
+        )
+        
+        # Assert
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+    
+    def test_delete_template_requires_authentication(self, client, sample_template):
+        """
+        GIVEN no API key
+        WHEN the DELETE /templates/{template_id} endpoint is called
+        THEN a 401 Unauthorized response should be returned
+        """
+        # Act
+        response = client.delete(f"/api/v1/templates/{sample_template.id}")
+        
+        # Assert
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
         
         # Check customization zones if they were created
         if "customization_zones" in template_data:

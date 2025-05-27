@@ -49,29 +49,43 @@ async def create_template(
     api_key: str = Depends(deps.get_admin_key)
 ) -> Any:
     """
-    Create new template.
+    Create a new template for a product.
     
-    Args:
-        db: Database session
-        template_in: Template data
-        api_key: Admin API key for authentication
-        
+    - **product_id**: ID of the product this template belongs to
+    - **version**: Template version number (must be unique per product)
+    - **definition**: JSON schema defining the customization zones
+    - **is_default**: Whether this template should be the default for the product
+    - **customization_zones**: List of customization zones with their configurations
+    
     Returns:
-        Created template
-        
-    Raises:
-        HTTPException: If product not found
+        The created template with all its details
     """
-    # Check if product exists
-    product = crud.get_product(db=db, product_id=template_in.product_id)
-    if not product:
+    try:
+        # Check if product exists
+        product = crud.get_product(db=db, product_id=template_in.product_id)
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Product with ID {template_in.product_id} not found",
+            )
+        
+        # Create the template
+        template = crud.create_template(db=db, template_in=template_in)
+        return template
+        
+    except ValueError as e:
+        # Handle validation errors from CRUD operations
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
-    
-    template = crud.create_template(db=db, template_in=template_in)
-    return template
+    except Exception as e:
+        # Log the unexpected error
+        print(f"Unexpected error creating template: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while creating the template",
+        )
 
 
 @router.get("/{template_id}", response_model=schemas.Template)
@@ -111,51 +125,90 @@ async def update_template(
     api_key: str = Depends(deps.get_admin_key)
 ) -> Any:
     """
-    Update a template.
+    Update an existing template.
     
-    Args:
-        db: Database session
-        template_id: Template UUID
-        template_in: Template update data
-        api_key: Admin API key for authentication
-        
-    Returns:
-        Updated template
-        
-    Raises:
-        HTTPException: If template not found
+    - **version**: New version number (must be unique per product)
+    - **definition**: Updated JSON schema defining the customization zones
+    - **is_default**: Whether this template should be the default for the product
+    - **customization_zones**: Updated list of customization zones
+    
+    Only the provided fields will be updated. All other fields remain unchanged.
     """
-    template = crud.get_template(db=db, template_id=template_id)
-    if not template:
+    try:
+        # Check if template exists
+        template = crud.get_template(db=db, template_id=template_id)
+        if not template:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Template with ID {template_id} not found",
+            )
+        
+        # Update the template
+        template = crud.update_template(db=db, template=template, template_in=template_in)
+        return template
+        
+    except ValueError as e:
+        # Handle validation errors from CRUD operations
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
         )
-    template = crud.update_template(db=db, template=template, template_in=template_in)
-    return template
+    except Exception as e:
+        # Log the unexpected error
+        print(f"Unexpected error updating template: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while updating the template",
+        )
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{template_id}", status_code=status.HTTP_200_OK, response_model=dict)
 async def delete_template(
     *,
     db: Session = Depends(deps.get_db_session),
     template_id: UUID,
     api_key: str = Depends(deps.get_admin_key)
-) -> None:
+) -> Any:
     """
     Delete a template.
     
-    Args:
-        db: Database session
-        template_id: Template UUID
-        api_key: Admin API key for authentication
-        
-    Raises:
-        HTTPException: If template not found
+    - If the template is marked as default, another template for the same product will be marked as default.
+    - The last template for a product cannot be deleted.
+    
+    Returns:
+        Success message
     """
-    template_exists = crud.delete_template(db=db, template_id=template_id)
-    if not template_exists:
+    try:
+        # Check if template exists
+        template = crud.get_template(db=db, template_id=template_id)
+        if not template:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Template with ID {template_id} not found",
+            )
+        
+        # Delete the template
+        if not crud.delete_template(db=db, template_id=template_id):
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to delete template",
+            )
+            
+        return {"message": "Template deleted successfully"}
+        
+    except ValueError as e:
+        # Handle validation errors from CRUD operations
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Template not found",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except HTTPException:
+        # Re-raise HTTP exceptions (like 404)
+        raise
+    except Exception as e:
+        # Log the unexpected error
+        print(f"Unexpected error deleting template: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An unexpected error occurred while deleting the template",
         )
