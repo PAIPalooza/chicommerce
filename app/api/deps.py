@@ -20,7 +20,13 @@ def get_db_session() -> Generator:
     Yields:
         Session: Database session
     """
-    return get_db()
+    db = None
+    try:
+        db = next(get_db())
+        yield db
+    finally:
+        if db:
+            db.close()
 
 
 def get_admin_key(api_key: str = Depends(api_key_header)) -> str:

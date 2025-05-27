@@ -51,8 +51,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         },
     )
 
-# Include API router
+# Include API router with the correct prefix
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# Add a test endpoint to verify the API is working
+@app.get(f"{settings.API_V1_STR}/test")
+async def test_endpoint():
+    return {"message": "API is working!"}
 
 # Health check endpoint
 @app.get("/health", tags=["health"])
