@@ -58,7 +58,7 @@ def get_default_template(db: Session, product_id: UUID) -> Optional[Template]:
 
 def create_template(db: Session, template_in: TemplateCreate) -> Template:
     """
-    Create a new template.
+    Create a new template with proper versioning and default template handling.
     
     Args:
         db: Database session
@@ -66,16 +66,39 @@ def create_template(db: Session, template_in: TemplateCreate) -> Template:
         
     Returns:
         Created Template object
+        
+    Raises:
+        ValueError: If version already exists for the product
     """
+    # Check if version already exists for this product
+    existing = db.query(Template).filter(
+        Template.product_id == template_in.product_id,
+        Template.version == template_in.version
+    ).first()
+    
+    if existing:
+        raise ValueError(f"Version {template_in.version} already exists for this product")
+    
     # If this is marked as default, unmark any existing default templates
     if template_in.is_default:
         db.query(Template).filter(
             Template.product_id == template_in.product_id,
             Template.is_default == True
         ).update({Template.is_default: False})
+    # If no default exists for this product, make this the default
+    elif not get_default_template(db, product_id=template_in.product_id):
+        template_in.is_default = True
+    
+    # Get the next version number if not provided (should be handled by schema validation)
+    if not template_in.version:
+        latest_template = db.query(Template).filter(
+            Template.product_id == template_in.product_id
+        ).order_by(Template.version.desc()).first()
+        
+        template_in.version = latest_template.version + 1 if latest_template else 1
     
     # Create the template
-    template_data = template_in.dict(exclude={"customization_zones"})
+    template_data = template_in.model_dump(exclude={"customization_zones"})
     template = Template(**template_data)
     db.add(template)
     db.flush()  # Flush to get template ID without committing
@@ -103,7 +126,7 @@ def update_template(
     template_in: TemplateUpdate
 ) -> Template:
     """
-    Update a template.
+    Update a template with proper versioning and default template handling.
     
     Args:
         db: Database session
@@ -112,28 +135,57 @@ def update_template(
         
     Returns:
         Updated Template object
+        
+    Raises:
+        ValueError: If version conflicts or validation fails
     """
-    update_data = template_in.dict(exclude_unset=True)
+    update_data = template_in.model_dump(exclude_unset=True, exclude_none=True)
     
-    # If changing to default, unmark any existing default templates
-    if update_data.get("is_default", False) and not template.is_default:
+    # Check for version conflicts if version is being updated
+    if 'version' in update_data and update_data['version'] != template.version:
+        # Check if the new version already exists for this product
+        existing = db.query(Template).filter(
+            Template.product_id == template.product_id,
+            Template.version == update_data['version'],
+            Template.id != template.id  # Exclude current template
+        ).first()
+        
+        if existing:
+            raise ValueError(f"Version {update_data['version']} already exists for this product")
+    
+    # Handle default template changes
+    if update_data.get('is_default') is True and not template.is_default:
+        # Unmark any existing default templates
         db.query(Template).filter(
             Template.product_id == template.product_id,
-            Template.is_default == True
+            Template.is_default == True,
+            Template.id != template.id  # Don't unmark ourselves
         ).update({Template.is_default: False})
+    elif update_data.get('is_default') is False and template.is_default:
+        # If unsetting default, ensure there's at least one default remaining
+        other_defaults = db.query(Template).filter(
+            Template.product_id == template.product_id,
+            Template.is_default == True,
+            Template.id != template.id
+        ).count()
+        
+        if other_defaults == 0:
+            raise ValueError("At least one template must be marked as default")
     
+    # Update the template fields
     for field, value in update_data.items():
         setattr(template, field, value)
-        
+    
     db.add(template)
     db.commit()
     db.refresh(template)
+    
     return template
 
 
 def delete_template(db: Session, template_id: UUID) -> bool:
     """
-    Delete a template.
+    Delete a template with proper default template handling.
     
     Args:
         db: Database session
@@ -141,10 +193,35 @@ def delete_template(db: Session, template_id: UUID) -> bool:
         
     Returns:
         True if deleted, False if not found
+        
+    Raises:
+        ValueError: If trying to delete the only default template
     """
     template = db.query(Template).filter(Template.id == template_id).first()
     if not template:
         return False
+    
+    # If this is the default template, ensure there's another template to take its place
+    if template.is_default:
+        other_defaults = db.query(Template).filter(
+            Template.product_id == template.product_id,
+            Template.id != template.id,
+            Template.is_default == True
+        ).count()
+        
+        if other_defaults == 0:
+            # Try to find any other template for this product
+            other_template = db.query(Template).filter(
+                Template.product_id == template.product_id,
+                Template.id != template.id
+            ).first()
+            
+            if other_template:
+                # Make the other template the default
+                other_template.is_default = True
+                db.add(other_template)
+            else:
+                raise ValueError("Cannot delete the only template for a product")
     
     db.delete(template)
     db.commit()

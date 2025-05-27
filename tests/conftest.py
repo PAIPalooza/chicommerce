@@ -143,6 +143,28 @@ def sample_product_data() -> Dict[str, Any]:
 
 
 @pytest.fixture(scope="function")
+def sample_product(db_session: Session, sample_product_data: Dict[str, Any]) -> Any:
+    """
+    Create a sample product in the database.
+    """
+    from app.models.product import Product
+    
+    product = Product(**sample_product_data)
+    db_session.add(product)
+    db_session.commit()
+    db_session.refresh(product)
+    return product
+
+
+@pytest.fixture(scope="function")
+def sample_product_id(sample_product: Any) -> str:
+    """
+    Return the ID of the sample product.
+    """
+    return sample_product.id
+
+
+@pytest.fixture(scope="function")
 def sample_template_data(sample_product_id) -> Dict[str, Any]:
     """
     Sample template data for tests.
@@ -172,3 +194,49 @@ def sample_template_data(sample_product_id) -> Dict[str, Any]:
             }
         ]
     }
+
+
+@pytest.fixture(scope="function")
+def sample_template(db_session: Session, sample_product_id: str) -> Any:
+    """
+    Create a sample template in the database.
+    """
+    from app.models.template import Template, CustomizationZone
+    
+    template = Template(
+        product_id=sample_product_id,
+        version=1,
+        definition={
+            "zones": {
+                "text_1": {"type": "text", "max_length": 100},
+                "image_1": {"type": "image", "formats": ["png", "jpg"]}
+            }
+        },
+        is_default=True
+    )
+    
+    db_session.add(template)
+    db_session.flush()  # Flush to get the template ID
+    
+    # Add customization zones
+    zones = [
+        CustomizationZone(
+            template_id=template.id,
+            key="text_1",
+            type="text",
+            config={"max_length": 100},
+            order_index=0
+        ),
+        CustomizationZone(
+            template_id=template.id,
+            key="image_1",
+            type="image",
+            config={"formats": ["png", "jpg"]},
+            order_index=1
+        )
+    ]
+    
+    db_session.add_all(zones)
+    db_session.commit()
+    db_session.refresh(template)
+    return template
