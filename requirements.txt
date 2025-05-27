@@ -1,0 +1,36 @@
+# Web framework and server
+fastapi>=0.110.0
+uvicorn>=0.27.0
+
+# Database and ORM
+sqlalchemy>=2.0.27
+alembic>=1.13.0
+psycopg2-binary>=2.9.9; platform_python_implementation != 'PyPy'
+psycopg>=3.1.16; platform_python_implementation == 'PyPy'
+
+# Authentication and security
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+python-multipart>=0.0.7
+
+# Configuration
+python-dotenv>=1.0.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# Testing
+pytest>=7.4.3
+pytest-asyncio>=0.23.0
+httpx>=0.27.0
+
+# Cache
+redis>=5.0.1
+
+# Utilities
+python-slugify>=8.0.1
+
+# Code quality
+black>=23.10.1
+isort>=5.12.0
+mypy>=1.6.1
+sqlalchemy-stubs>=0.4
