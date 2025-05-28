@@ -50,7 +50,7 @@ class TestTemplatesAPI:
         
         # Assert
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "product_id" in response.json()["detail"]
+        assert response.json()["detail"] == "Product ID is required for listing templates"
     
     # --- Create Template ---
     
@@ -222,8 +222,7 @@ class TestTemplatesAPI:
         )
         
         # Assert
-        assert response.status_code == status.HTTP_200_OK
-        assert response.json()["message"] == "Template deleted successfully"
+        assert response.status_code == status.HTTP_204_NO_CONTENT
         
         # Verify template is deleted
         response = client.get(f"/api/v1/templates/{sample_template.id}")
@@ -243,7 +242,7 @@ class TestTemplatesAPI:
         
         # Assert
         assert response.status_code == status.HTTP_400_BAD_REQUEST
-        assert "Cannot delete the last template" in response.json()["detail"]
+        assert "Cannot delete the only template for a product" == response.json()["detail"]
     
     # --- Authorization ---
     
@@ -253,6 +252,9 @@ class TestTemplatesAPI:
         WHEN the POST /templates endpoint is called
         THEN a 401 Unauthorized response should be returned
         """
+        # Remove authentication for this test
+        client.set_auth(None)
+        
         # Act
         response = client.post(
             "/api/v1/templates/",
@@ -261,6 +263,9 @@ class TestTemplatesAPI:
         
         # Assert
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        
+        # Restore authentication for other tests
+        client.set_auth("test-admin-key")
     
     def test_update_template_requires_authentication(self, client, sample_template):
         """
@@ -268,6 +273,9 @@ class TestTemplatesAPI:
         WHEN the PUT /templates/{template_id} endpoint is called
         THEN a 401 Unauthorized response should be returned
         """
+        # Remove authentication for this test
+        client.set_auth(None)
+        
         # Act
         response = client.put(
             f"/api/v1/templates/{sample_template.id}",
@@ -276,6 +284,9 @@ class TestTemplatesAPI:
         
         # Assert
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        
+        # Restore authentication for other tests
+        client.set_auth("test-admin-key")
     
     def test_delete_template_requires_authentication(self, client, sample_template):
         """
@@ -283,36 +294,56 @@ class TestTemplatesAPI:
         WHEN the DELETE /templates/{template_id} endpoint is called
         THEN a 401 Unauthorized response should be returned
         """
+        # Remove authentication for this test
+        client.set_auth(None)
+        
         # Act
         response = client.delete(f"/api/v1/templates/{sample_template.id}")
         
         # Assert
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
         
-        # Check customization zones if they were created
-        if "customization_zones" in template_data:
-            assert len(data["customization_zones"]) == len(template_data["customization_zones"])
-            for zone in data["customization_zones"]:
-                assert zone["template_id"] == data["id"]
+        # Restore authentication for other tests
+        client.set_auth("test-admin-key")
     
-    def test_create_template_fails_without_api_key(self, client, sample_product_id, sample_template_data):
+    def test_create_template_fails_with_invalid_api_key(self, client, sample_product_id, sample_template_data, monkeypatch):
         """
-        GIVEN valid template data but no API key
+        GIVEN valid template data but an invalid API key
         WHEN the POST /templates endpoint is called
         THEN a 403 Forbidden response should be returned
         """
         # Arrange
-        template_data = sample_template_data
-        template_data["product_id"] = sample_product_id
+        template_data = sample_template_data.copy()
+        template_data["product_id"] = str(sample_product_id)  # Convert UUID to string for JSON serialization
         
-        # Act
+        # Mock the settings.ADMIN_API_KEY to ensure our test key is different
+        monkeypatch.setattr("app.core.config.settings.ADMIN_API_KEY", "valid-admin-key")
+        
+        # Remove any existing authentication
+        client.set_auth(None)
+        
+        # Act - First test with no API key at all
         response = client.post(
             "/api/v1/templates/",
             json=template_data
         )
         
-        # Assert
+        # Assert - Should be 401 Unauthorized for missing API key
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+        
+        # Act - Now test with an invalid API key
+        response = client.post(
+            "/api/v1/templates/",
+            json=template_data,
+            headers={"X-API-Key": "invalid-api-key"}
+        )
+        
+        # Assert - Should be 403 Forbidden for invalid API key
         assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert "Invalid API Key" in response.json()["detail"]
+        
+        # Restore valid API key for other tests
+        client.set_auth("test-admin-key")
     
     def test_create_template_fails_with_nonexistent_product(self, client, sample_template_data):
         """
@@ -321,8 +352,8 @@ class TestTemplatesAPI:
         THEN a 404 Not Found response should be returned
         """
         # Arrange
-        template_data = sample_template_data
-        template_data["product_id"] = uuid4()
+        template_data = sample_template_data.copy()  # Create a copy to avoid modifying the fixture
+        template_data["product_id"] = str(uuid4())  # Convert UUID to string for JSON serialization
         
         # Act
         response = client.post(
@@ -428,33 +459,42 @@ class TestTemplatesAPI:
     
     def test_delete_template_removes_template(self, client, db_session, sample_product_id):
         """
-        GIVEN an existing template
+        GIVEN multiple existing templates for a product
         WHEN the DELETE /templates/{id} endpoint is called
-        THEN the template should be deleted
+        THEN the specified template should be deleted and another template should be made default if needed
         """
-        # Arrange
-        template = Template(
+        # Arrange - create two templates for the product
+        template1 = Template(
             product_id=sample_product_id,
             version=1,
             definition={"zones": {"text_front": {"type": "text"}}},
             is_default=True
         )
-        db_session.add(template)
+        template2 = Template(
+            product_id=sample_product_id,
+            version=2,
+            definition={"zones": {"text_back": {"type": "text"}}},
+            is_default=False
+        )
+        db_session.add_all([template1, template2])
         db_session.commit()
-        template_id = template.id
         
-        # Act
+        # Act - delete the first template
         response = client.delete(
-            f"/api/v1/templates/{template_id}",
+            f"/api/v1/templates/{template1.id}",
             headers={"X-API-Key": "test-admin-key"}
         )
         
         # Assert
         assert response.status_code == status.HTTP_204_NO_CONTENT
         
-        # Verify in database
-        deleted_template = db_session.query(Template).filter(Template.id == template_id).first()
+        # Verify template1 is deleted
+        deleted_template = db_session.get(Template, template1.id)
         assert deleted_template is None
+        
+        # Verify template2 is now the default
+        db_session.refresh(template2)
+        assert template2.is_default is True
         
     def test_product_with_default_template_includes_template_data(self, client, db_session, sample_product_id):
         """
