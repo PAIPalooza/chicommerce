@@ -116,16 +116,43 @@ def client(db_session) -> Generator[TestClient, None, None]:
         finally:
             pass
     
-    def _get_admin_key():
-        return "test-admin-key"
+    # Store the original dependencies
+    original_get_db = app.dependency_overrides.get(deps.get_db_session, deps.get_db_session)
+    original_get_admin_key = app.dependency_overrides.get(deps.get_admin_key, deps.get_admin_key)
     
+    # Set up test dependencies
     app.dependency_overrides[deps.get_db_session] = _get_test_db
-    app.dependency_overrides[deps.get_admin_key] = _get_admin_key
     
-    with TestClient(app) as c:
-        yield c
+    # Create a test client
+    client = TestClient(app)
     
-    app.dependency_overrides.clear()
+    # Add a method to set authentication
+    def set_auth(api_key: str = None):
+        if api_key is None:
+            # Remove the admin key override to test authentication
+            if deps.get_admin_key in app.dependency_overrides:
+                del app.dependency_overrides[deps.get_admin_key]
+        else:
+            # Set a specific API key for testing
+            def _get_test_admin_key():
+                return api_key
+            app.dependency_overrides[deps.get_admin_key] = _get_test_admin_key
+        return client
+    
+    # Set default auth for backward compatibility
+    client.set_auth = set_auth
+    client.set_auth("test-admin-key")
+    
+    try:
+        yield client
+    finally:
+        # Clean up
+        app.dependency_overrides.clear()
+        # Restore original overrides
+        if original_get_db != deps.get_db_session:
+            app.dependency_overrides[deps.get_db_session] = original_get_db
+        if original_get_admin_key != deps.get_admin_key:
+            app.dependency_overrides[deps.get_admin_key] = original_get_admin_key
 
 
 @pytest.fixture(scope="function")

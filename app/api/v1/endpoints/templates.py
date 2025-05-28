@@ -60,15 +60,15 @@ async def create_template(
     Returns:
         The created template with all its details
     """
+    # Check if product exists first
+    product = crud.get_product(db=db, product_id=template_in.product_id)
+    if not product:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Product with ID {template_in.product_id} not found",
+        )
+    
     try:
-        # Check if product exists
-        product = crud.get_product(db=db, product_id=template_in.product_id)
-        if not product:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Product with ID {template_in.product_id} not found",
-            )
-        
         # Create the template
         template = crud.create_template(db=db, template_in=template_in)
         return template
@@ -162,13 +162,13 @@ async def update_template(
         )
 
 
-@router.delete("/{template_id}", status_code=status.HTTP_200_OK, response_model=dict)
+@router.delete("/{template_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_template(
     *,
     db: Session = Depends(deps.get_db_session),
     template_id: UUID,
     api_key: str = Depends(deps.get_admin_key)
-) -> Any:
+) -> None:
     """
     Delete a template.
     
@@ -176,7 +176,7 @@ async def delete_template(
     - The last template for a product cannot be deleted.
     
     Returns:
-        Success message
+        No content (204) on success
     """
     try:
         # Check if template exists
@@ -194,7 +194,7 @@ async def delete_template(
                 detail="Failed to delete template",
             )
             
-        return {"message": "Template deleted successfully"}
+        return None
         
     except ValueError as e:
         # Handle validation errors from CRUD operations
