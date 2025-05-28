@@ -21,7 +21,7 @@ if config.config_file_name is not None:
 
 # Import models to ensure they are registered with the metadata
 from app.db.session import Base
-from app.models import product, template
+from app.models import product, template, option_set
 
 # Add models here
 target_metadata = Base.metadata
