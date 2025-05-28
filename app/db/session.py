@@ -1,15 +1,11 @@
 from typing import Generator
 
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker, Session
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
-
-# SQLAlchemy 2.0 declarative base
-class Base(DeclarativeBase):
-    """Base class for all SQLAlchemy models."""
-    pass
+from .base_class import Base
 
 # Create database engine
 engine = create_engine(
@@ -18,6 +14,12 @@ engine = create_engine(
     echo=settings.LOG_LEVEL == "DEBUG",
     poolclass=NullPool,
 )
+
+# Create all tables
+# Note: In a production environment, you would use Alembic for migrations
+# This is just for development/testing purposes
+def create_tables():
+    Base.metadata.create_all(bind=engine)
 
 # Session factory
 SessionLocal = sessionmaker(

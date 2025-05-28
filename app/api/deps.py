@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.core.config import settings
 
+# Configure API key header to allow custom error handling
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
@@ -40,9 +41,14 @@ def get_admin_key(api_key: str = Depends(api_key_header)) -> str:
         API key if valid
         
     Raises:
-        HTTPException: If API key is invalid
+        HTTPException: 401 if API key is missing, 403 if API key is invalid
     """
-    if not api_key or api_key != settings.ADMIN_API_KEY:
+    if api_key is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="API key is required",
+        )
+    if api_key != settings.ADMIN_API_KEY:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API Key",

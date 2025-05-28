@@ -137,11 +137,32 @@ async def delete_product(
         api_key: Admin API key for authentication
         
     Raises:
-        HTTPException: If product not found
+        HTTPException: If product not found or deletion fails
     """
-    product_exists = crud.delete_product(db=db, product_id=product_id)
-    if not product_exists:
+    try:
+        product_exists = crud.delete_product(db=db, product_id=product_id)
+        if not product_exists:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Product not found",
+            )
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions
+    except ValueError as e:
+        # Handle validation errors from CRUD operations
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Product not found",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
+    except Exception as e:
+        # Log the full error for debugging
+        print(f"Error deleting product {product_id}: {str(e)}")
+        print(f"Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        
+        # Return a more specific error message
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete product: {str(e)}",
         )

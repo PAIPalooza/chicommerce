@@ -141,7 +141,7 @@ def update_product(
 
 def delete_product(db: Session, product_id: UUID) -> bool:
     """
-    Delete a product.
+    Delete a product and handle related entities.
     
     Args:
         db: Database session
@@ -149,11 +149,42 @@ def delete_product(db: Session, product_id: UUID) -> bool:
         
     Returns:
         True if deleted, False if not found
+        
+    Raises:
+        ValueError: If there are active cart items that prevent deletion
     """
-    product = db.query(Product).filter(Product.id == product_id).first()
-    if not product:
-        return False
+    from app.models.cart import CartItem, CustomizationSession
     
-    db.delete(product)
-    db.commit()
-    return True
+    # Start a transaction
+    try:
+        # Check if product exists
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            return False
+            
+        # Check for active cart items
+        cart_items_count = db.query(CartItem).filter(
+            CartItem.product_id == product_id
+        ).count()
+        
+        if cart_items_count > 0:
+            # Raise an error if there are cart items
+            raise ValueError(
+                f"Cannot delete product with {cart_items_count} cart items. "
+                "Please remove all cart items before deleting the product."
+            )
+        
+        # Delete all customization sessions for this product
+        # This is necessary because of the foreign key constraint
+        db.query(CustomizationSession).filter(
+            CustomizationSession.product_id == product_id
+        ).delete(synchronize_session=False)
+        
+        # Delete the product (this will cascade to templates and option_sets)
+        db.delete(product)
+        db.commit()
+        return True
+        
+    except Exception as e:
+        db.rollback()
+        raise ValueError(f"Failed to delete product: {str(e)}")

@@ -195,33 +195,32 @@ def delete_template(db: Session, template_id: UUID) -> bool:
         True if deleted, False if not found
         
     Raises:
-        ValueError: If trying to delete the only default template
+        ValueError: If trying to delete the only template for a product
     """
     template = db.query(Template).filter(Template.id == template_id).first()
     if not template:
         return False
     
-    # If this is the default template, ensure there's another template to take its place
+    # Check if this is the last template for the product
+    other_templates_count = db.query(Template).filter(
+        Template.product_id == template.product_id,
+        Template.id != template.id
+    ).count()
+    
+    if other_templates_count == 0:
+        raise ValueError("Cannot delete the only template for a product")
+    
+    # If this is the default template, make another template the default
     if template.is_default:
-        other_defaults = db.query(Template).filter(
+        # Find the first non-deleted template for this product
+        new_default = db.query(Template).filter(
             Template.product_id == template.product_id,
-            Template.id != template.id,
-            Template.is_default == True
-        ).count()
+            Template.id != template.id
+        ).first()
         
-        if other_defaults == 0:
-            # Try to find any other template for this product
-            other_template = db.query(Template).filter(
-                Template.product_id == template.product_id,
-                Template.id != template.id
-            ).first()
-            
-            if other_template:
-                # Make the other template the default
-                other_template.is_default = True
-                db.add(other_template)
-            else:
-                raise ValueError("Cannot delete the only template for a product")
+        if new_default:
+            new_default.is_default = True
+            db.add(new_default)
     
     db.delete(template)
     db.commit()
