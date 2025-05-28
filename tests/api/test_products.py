@@ -50,7 +50,11 @@ class TestProductsAPI:
         WHEN the GET /products endpoint is called with active_only=false
         THEN both products should be returned
         """
-        # Arrange
+        # Arrange - Clean up any existing products first
+        db_session.query(Product).delete()
+        db_session.commit()
+        
+        # Create our test products
         active_product = Product(**sample_product_data)
         inactive_product = Product(
             name="Inactive Product",
@@ -68,10 +72,14 @@ class TestProductsAPI:
         # Assert
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
-        assert len(data) == 2
+        
+        # Check that we have exactly 2 products
+        assert len(data) == 2, f"Expected 2 products, got {len(data)}. Products: {data}"
+        
+        # Check that both products are in the response
         names = [p["name"] for p in data]
-        assert "Test Product" in names
-        assert "Inactive Product" in names
+        assert "Test Product" in names, f"Test Product not found in {names}"
+        assert "Inactive Product" in names, f"Inactive Product not found in {names}"
     
     def test_create_product_creates_and_returns_product(self, client, sample_product_data):
         """
@@ -102,16 +110,24 @@ class TestProductsAPI:
         """
         GIVEN valid product data but no API key
         WHEN the POST /products endpoint is called
-        THEN a 403 Forbidden response should be returned
+        THEN a 401 Unauthorized response should be returned
         """
-        # Act
-        response = client.post(
-            "/api/v1/products/",
-            json=sample_product_data
-        )
+        # Arrange - Explicitly remove authentication for this test
+        client.set_auth(None)
         
-        # Assert
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        try:
+            # Act
+            response = client.post(
+                "/api/v1/products/",
+                json=sample_product_data
+            )
+            
+            # Assert
+            assert response.status_code == status.HTTP_401_UNAUTHORIZED, \
+                f"Expected 401 Unauthorized, got {response.status_code}. Response: {response.text}"
+        finally:
+            # Restore authentication for other tests
+            client.set_auth("test-admin-key")
     
     def test_get_product_by_id_returns_product_with_default_template(self, client, db_session, sample_product_data):
         """

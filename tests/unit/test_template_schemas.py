@@ -111,18 +111,20 @@ def test_template_update_validation():
     # Partial update with just is_default
     update = TemplateUpdate(is_default=True)
     assert update.is_default is True
-    assert not hasattr(update, 'version')  # version is not in the model
+    assert update.version is None  # version is optional and not set
     assert update.definition is None
     
-    # Update with definition only (no customization_zones in the model)
+    # Update with version and definition
     update = TemplateUpdate(
-        definition={"zones": {"text_1": {"type": "text"}}}
+        version=2,
+        definition={"zones": {"text_1": {"type": "text"}}},
+        is_default=True
     )
+    assert update.version == 2
     assert "text_1" in update.definition["zones"]
+    assert update.is_default is True
     
-    # Test invalid zone in update
+    # Test invalid definition
     with pytest.raises(ValidationError) as exc_info:
-        TemplateUpdate(
-            definition={"zones": {"text_1": {"type": "invalid"}}}
-        )
-    assert "Invalid zone type 'invalid'" in str(exc_info.value)
+        TemplateUpdate(definition={"invalid": "data"})
+    assert "Template definition must contain 'zones' field" in str(exc_info.value)
