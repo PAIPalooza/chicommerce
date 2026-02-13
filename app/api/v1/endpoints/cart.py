@@ -1,6 +1,7 @@
 """API endpoints for cart functionality."""
 from typing import List, Optional
 from uuid import UUID
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import APIKeyHeader
@@ -11,8 +12,11 @@ from app.core.config import settings
 from app.crud import cart as crud_cart
 from app.schemas.cart import (
     CartResponse, CartItemCreate, CartItemUpdate,
-    CustomizationSessionCreate, CustomizationSessionUpdate, CustomizationSessionInDB
+    CustomizationSessionCreate, CustomizationSessionUpdate, CustomizationSessionInDB,
+    SessionStateResponse
 )
+from app.schemas.pricing import PriceBreakdown
+from app.services.pricing_service import PricingService, TaxService, ShippingService
 
 router = APIRouter()
 
@@ -244,32 +248,249 @@ async def update_customization_session(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No active session found"
         )
-    
+
     db_session = crud_cart.get_customization_session(
         db,
         session_id=session_id,
         product_id=product_id
     )
-    
+
     if not db_session:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No customization session found for this product"
         )
-    
+
     updated_session = crud_cart.update_customization_session(
         db,
         db_session=db_session,
         session_in=session_in
     )
-    
+
     return updated_session
+
+
+@router.patch("/customization-sessions/{product_id}", response_model=CustomizationSessionInDB)
+async def validate_and_update_customization_session(
+    product_id: UUID,
+    session_in: CustomizationSessionUpdate,
+    request: Request,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Validate and update a customization session with template constraint validation.
+
+    This endpoint enforces all template constraints including:
+    - Text length limits (min_length, max_length)
+    - Image format restrictions
+    - Color palette constraints
+    - Unknown zone detection
+
+    Args:
+        product_id: UUID of the product being customized
+        session_in: Customization data to validate and update
+        request: HTTP request with session cookie
+        db: Database session
+
+    Returns:
+        Updated CustomizationSession with validated data
+
+    Raises:
+        HTTPException 404: If session or template not found
+        HTTPException 400: If validation fails with detailed error messages
+    """
+    from app.services.customization_validator import (
+        CustomizationValidator,
+        ValidationError
+    )
+
+    # Get session ID from cookie
+    session_id = request.cookies.get("session_id")
+    if not session_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No active session found"
+        )
+
+    # Get existing customization session
+    db_session = crud_cart.get_customization_session(
+        db,
+        session_id=session_id,
+        product_id=product_id
+    )
+
+    if not db_session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No customization session found for this product"
+        )
+
+    # Validate customization data against template constraints
+    validator = CustomizationValidator(db)
+
+    try:
+        is_valid, errors = validator.validate_customization_data(
+            product_id=product_id,
+            customization_data=session_in.customization_data
+        )
+
+        if not is_valid:
+            # Return detailed validation errors
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="; ".join([f"{key}: {msg}" for key, msg in errors.items()])
+            )
+
+    except ValidationError as e:
+        # Handle validator errors (e.g., template not found)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+    # If validation passes, update the session
+    updated_session = crud_cart.update_customization_session(
+        db,
+        db_session=db_session,
+        session_in=session_in
+    )
+
+    return updated_session
+
+
+# Session State Endpoints
+
+@router.get("/sessions/{session_key}", response_model=SessionStateResponse)
+async def get_session_state(
+    session_key: str,
+    db: Session = Depends(deps.get_db),
+):
+    """
+    Retrieve session state for resuming customization.
+
+    Returns the customization session for the given session key,
+    including current options and template version.
+
+    Args:
+        session_key: The session key to retrieve
+
+    Returns:
+        Session state with options and template version
+
+    Raises:
+        HTTPException 404: If session not found, expired, or inactive
+    """
+    from app.models.template import Template
+
+    # Retrieve customization session by session key
+    # (excludes sessions older than 30 days)
+    session = crud_cart.get_customization_session_by_key(db, session_key=session_key)
+
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Session not found or expired"
+        )
+
+    # Get the template to retrieve the version
+    template = db.query(Template).filter(Template.id == session.template_id).first()
+    template_version = template.version if template else None
+
+    # Build response with template version
+    session_response = SessionStateResponse(
+        session_key=session.session_key,
+        product_id=session.product_id,
+        template_id=session.template_id,
+        options=session.options,
+        template_version=template_version,
+        is_active=session.is_active,
+        created_at=session.created_at,
+        updated_at=session.updated_at
+    )
+
+    return session_response
+
+
+def calculate_cart_pricing(db_cart) -> PriceBreakdown:
+    """
+    Calculate complete pricing breakdown for a cart.
+
+    This function aggregates all cart items and calculates:
+    - Base prices
+    - Option surcharges from customization data
+    - Tax (using stub service)
+    - Shipping (using stub service)
+    - Total
+
+    Args:
+        db_cart: Cart ORM model with items relationship loaded
+
+    Returns:
+        PriceBreakdown with complete pricing details
+    """
+    # Initialize pricing service with default tax and shipping services
+    tax_service = TaxService()
+    shipping_service = ShippingService()
+    pricing_service = PricingService(
+        tax_service=tax_service,
+        shipping_service=shipping_service
+    )
+
+    # Prepare cart items for pricing calculation
+    cart_items = []
+    for item in db_cart.items:
+        # Extract options from customization_data if present
+        # In the future, this would map to actual Option models with price deltas
+        options = []
+        if item.customization_data:
+            # For now, we assume customization_data might have option_surcharges
+            # In a real implementation, we'd query the Option models
+            option_surcharge = item.customization_data.get("option_surcharge", 0)
+            if option_surcharge:
+                options.append({
+                    "name": "Customization",
+                    "value": "Custom",
+                    "price_delta": Decimal(str(option_surcharge))
+                })
+
+        cart_items.append({
+            "base_price": Decimal(str(item.product.base_price)),
+            "options": options,
+            "quantity": item.quantity
+        })
+
+    # Calculate pricing
+    if cart_items:
+        price_calc = pricing_service.calculate_cart_total(
+            items=cart_items,
+            shipping_required=True
+        )
+
+        return PriceBreakdown(
+            base_price=price_calc.base_price,
+            option_surcharges=price_calc.option_surcharges,
+            subtotal=price_calc.subtotal,
+            tax=price_calc.tax,
+            shipping=price_calc.shipping,
+            total=price_calc.total
+        )
+    else:
+        # Empty cart
+        return PriceBreakdown(
+            base_price=Decimal("0.00"),
+            option_surcharges=Decimal("0.00"),
+            subtotal=Decimal("0.00"),
+            tax=Decimal("0.00"),
+            shipping=Decimal("0.00"),
+            total=Decimal("0.00")
+        )
+
 
 def format_cart_response(db_cart) -> CartResponse:
     """Format cart data for the response."""
     from app.schemas.cart import CartItemWithProduct
     from app.schemas.product import ProductBase
-    
+
     # Convert CartItem objects to CartItemWithProduct
     items_with_products = []
     for item in db_cart.items:
@@ -286,7 +507,10 @@ def format_cart_response(db_cart) -> CartResponse:
                 created_at=item.product.created_at,
                 updated_at=item.product.updated_at
             )
-        
+
+        # Calculate line_total for this item
+        line_total = float(item.quantity * item.unit_price)
+
         item_dict = {
             'id': item.id,
             'cart_id': item.cart_id,
@@ -296,13 +520,17 @@ def format_cart_response(db_cart) -> CartResponse:
             'customization_data': item.customization_data or {},
             'created_at': item.created_at,
             'updated_at': item.updated_at,
-            'product': product_data
+            'product': product_data,
+            'line_total': line_total
         }
         items_with_products.append(CartItemWithProduct(**item_dict))
-    
+
     subtotal = sum(item.quantity * item.unit_price for item in db_cart.items)
     total_items = sum(item.quantity for item in db_cart.items)
-    
+
+    # Calculate detailed pricing breakdown
+    pricing = calculate_cart_pricing(db_cart)
+
     return CartResponse(
         id=db_cart.id,
         user_id=db_cart.user_id,
@@ -310,5 +538,6 @@ def format_cart_response(db_cart) -> CartResponse:
         total_items=total_items,
         subtotal=float(subtotal),  # Ensure it's a float
         created_at=db_cart.created_at,
-        updated_at=db_cart.updated_at
+        updated_at=db_cart.updated_at,
+        pricing=pricing
     )
