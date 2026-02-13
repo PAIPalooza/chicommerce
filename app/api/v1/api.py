@@ -3,7 +3,7 @@ Main API router for API v1.
 """
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import products, templates, option_sets, cart, sessions, webhooks
+from app.api.v1.endpoints import products, templates, option_sets, cart, sessions, webhooks, orders, previews
 
 api_router = APIRouter()
 
@@ -14,3 +14,5 @@ api_router.include_router(option_sets.router, prefix="/option-sets", tags=["opti
 api_router.include_router(cart.router, tags=["cart"])
 api_router.include_router(sessions.router, tags=["sessions"])
 api_router.include_router(webhooks.router, prefix="/webhooks", tags=["webhooks"])
+api_router.include_router(orders.router, prefix="/orders", tags=["orders"])
+api_router.include_router(previews.router, tags=["previews"])
