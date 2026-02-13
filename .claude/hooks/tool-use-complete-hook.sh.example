@@ -1,0 +1,51 @@
+#!/bin/bash
+# tool-use-complete-hook.sh
+# Fires after a tool completes execution
+#
+# Available environment variables:
+# - TOOL_NAME: Name of the tool that was executed
+# - TOOL_INPUT: Input parameters (JSON)
+# - TOOL_OUTPUT: Tool's output
+# - DURATION_MS: Execution duration in milliseconds
+# - SUCCESS: "true" or "false"
+#
+# Usage: Copy to tool-use-complete-hook.sh and make executable
+
+# Example: Log all tool executions for audit trail
+AUDIT_LOG="/tmp/claude_tool_audit.log"
+
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) | TOOL=$TOOL_NAME | DURATION=${DURATION_MS}ms | SUCCESS=$SUCCESS" >> "$AUDIT_LOG"
+
+# Example: Store failed tool executions for debugging
+if [ "$SUCCESS" = "false" ]; then
+    echo "[Hook] Tool execution failed: $TOOL_NAME"
+
+    # Store failure context in memory
+    TOKEN="${ZERODB_TOKEN:-}"
+
+    if [ -n "$TOKEN" ]; then
+        ERROR_MSG=$(echo "$TOOL_OUTPUT" | head -c 300)
+
+        curl -s -X POST http://localhost:8080/api/v1/memory \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"content\": \"Tool execution failed: $TOOL_NAME - $ERROR_MSG\",
+                \"metadata\": {
+                    \"tool_name\": \"$TOOL_NAME\",
+                    \"duration_ms\": \"$DURATION_MS\",
+                    \"timestamp\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",
+                    \"failure\": true
+                },
+                \"tags\": [\"tool-failure\", \"$TOOL_NAME\", \"debug\"],
+                \"priority\": \"high\"
+            }" > /dev/null 2>&1
+    fi
+fi
+
+# Example: Track slow tools (>5 seconds)
+if [ "$DURATION_MS" -gt 5000 ]; then
+    echo "[Hook] Slow tool detected: $TOOL_NAME took ${DURATION_MS}ms" >> /tmp/claude_performance.log
+fi
+
+exit 0
