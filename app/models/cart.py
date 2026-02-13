@@ -21,7 +21,8 @@ class Cart(Base):
     
     # Relationships
     items: Mapped[List["CartItem"]] = relationship(back_populates="cart", cascade="all, delete-orphan")
-    
+    orders: Mapped[List["Order"]] = relationship(back_populates="cart")
+
     def __repr__(self) -> str:
         return f"<Cart {self.id}>"
 
@@ -50,17 +51,19 @@ class CartItem(Base):
 class CustomizationSession(Base):
     """Tracks the state of a product customization session."""
     __tablename__ = "customization_sessions"
-    
+
     id: Mapped[UUID] = mapped_column(primary_key=True, index=True, default=uuid4)
-    session_id: Mapped[str] = mapped_column(String(255), index=True, nullable=False)
-    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id"), index=True, nullable=False)
-    customization_data: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    session_key: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
+    product_id: Mapped[UUID] = mapped_column(ForeignKey("products.id", ondelete="CASCADE"), index=True, nullable=False)
+    template_id: Mapped[UUID] = mapped_column(ForeignKey("templates.id"), index=True, nullable=False)
+    options: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # Relationships
     product: Mapped["Product"] = relationship(back_populates="customization_sessions")
-    
+    template: Mapped["Template"] = relationship(back_populates="customization_sessions")
+
     def __repr__(self) -> str:
         return f"<CustomizationSession {self.id} for Product {self.product_id}>"
