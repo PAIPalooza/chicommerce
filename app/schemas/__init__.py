@@ -6,7 +6,3 @@ from app.schemas.order import (
     StripeWebhookEvent, PayPalWebhookEvent, WebhookProcessingResult,
     PaymentEventResponse, OrderStatusUpdate
 )
-from app.schemas.preview import (
-    PreviewJobCreate, PreviewJobResponse, PreviewJobStatus,
-    PreviewRequestResponse, PreviewJobUpdate
-)
