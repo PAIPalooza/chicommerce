@@ -4,13 +4,15 @@ Main FastAPI application.
 import logging
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from app.api.v1.api import api_router
 from app.core.config import settings
+from app.middleware.metrics import MetricsMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -36,6 +38,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add metrics middleware to track all HTTP requests
+app.add_middleware(MetricsMiddleware)
 
 # Custom error handler for validation errors
 @app.exception_handler(RequestValidationError)
@@ -78,6 +83,27 @@ def root() -> Any:
         "version": "0.1.0",
         "docs": "/api/docs",
     }
+
+# Metrics endpoint for Prometheus scraping
+@app.get("/metrics", tags=["monitoring"])
+def metrics() -> Response:
+    """
+    Prometheus metrics endpoint.
+
+    Exposes metrics in Prometheus text format for scraping by monitoring systems.
+    Includes:
+    - http_requests_total: Total HTTP requests by method/endpoint/status
+    - http_request_duration_seconds: HTTP request duration histogram
+    - http_5xx_errors_total: Total HTTP 5xx errors
+    - render_jobs_total: Total render jobs by status
+    - failed_webhooks_total: Total failed webhook deliveries
+    - database_connections_active: Active database connections
+
+    Returns:
+        Response with Prometheus metrics in text format
+    """
+    metrics_output = generate_latest()
+    return Response(content=metrics_output, media_type=CONTENT_TYPE_LATEST)
 
 if __name__ == "__main__":
     import uvicorn

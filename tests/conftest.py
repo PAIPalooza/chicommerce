@@ -4,6 +4,7 @@ Test configuration for pytest fixtures.
 import os
 import pytest
 from typing import Dict, Generator, Any
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -14,6 +15,7 @@ from app.main import app
 from app.api import deps
 from app.db.session import Base
 from app.core.config import settings
+from app.services.cache_service import get_cache_service
 
 # Test database URL from settings
 TEST_DATABASE_URL = settings.TEST_DATABASE_URL
@@ -115,14 +117,27 @@ def client(db_session) -> Generator[TestClient, None, None]:
             yield db_session
         finally:
             pass
-    
+
+    # Create a mock cache service that doesn't actually cache
+    async def _get_mock_cache():
+        mock_cache = AsyncMock()
+        # Mock cache always returns None (cache miss)
+        mock_cache.get.return_value = None
+        # Mock cache set/delete/invalidate_pattern always succeed
+        mock_cache.set.return_value = True
+        mock_cache.delete.return_value = 1
+        mock_cache.invalidate_pattern.return_value = 0
+        return mock_cache
+
     # Store the original dependencies
     original_get_db = app.dependency_overrides.get(deps.get_db_session, deps.get_db_session)
     original_get_admin_key = app.dependency_overrides.get(deps.get_admin_key, deps.get_admin_key)
-    
+    original_get_cache = app.dependency_overrides.get(get_cache_service, get_cache_service)
+
     # Set up test dependencies
     app.dependency_overrides[deps.get_db_session] = _get_test_db
-    
+    app.dependency_overrides[get_cache_service] = _get_mock_cache
+
     # Create a test client
     client = TestClient(app)
     
@@ -153,6 +168,8 @@ def client(db_session) -> Generator[TestClient, None, None]:
             app.dependency_overrides[deps.get_db_session] = original_get_db
         if original_get_admin_key != deps.get_admin_key:
             app.dependency_overrides[deps.get_admin_key] = original_get_admin_key
+        if original_get_cache != get_cache_service:
+            app.dependency_overrides[get_cache_service] = original_get_cache
 
 
 @pytest.fixture(scope="function")

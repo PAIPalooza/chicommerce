@@ -16,6 +16,7 @@ from app.models.order import PaymentProvider
 from app.schemas.order import WebhookProcessingResult
 from app.services.webhook_verification import webhook_verification_service
 from app.services.order_service import OrderService, OrderStateTransitionError
+from app.core.metrics import increment_webhook_failure
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -53,15 +54,22 @@ async def handle_stripe_webhook(
     payload_str = body.decode('utf-8')
 
     # Verify signature
-    webhook_verification_service.verify_stripe_signature(
-        payload=payload_str,
-        signature_header=stripe_signature
-    )
+    try:
+        webhook_verification_service.verify_stripe_signature(
+            payload=payload_str,
+            signature_header=stripe_signature
+        )
+    except Exception:
+        # Track signature verification failures
+        increment_webhook_failure(provider='stripe', error_type='signature_error')
+        raise
 
     # Parse payload
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as e:
+        # Track JSON parsing failures
+        increment_webhook_failure(provider='stripe', error_type='parse_error')
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid JSON payload: {str(e)}"
@@ -230,6 +238,8 @@ async def handle_paypal_webhook(
     try:
         payload = json.loads(payload_str)
     except json.JSONDecodeError as e:
+        # Track JSON parsing failures
+        increment_webhook_failure(provider='paypal', error_type='parse_error')
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Invalid JSON payload: {str(e)}"
@@ -245,10 +255,15 @@ async def handle_paypal_webhook(
     }
 
     # Verify signature
-    webhook_verification_service.verify_paypal_signature(
-        payload=payload,
-        headers=headers
-    )
+    try:
+        webhook_verification_service.verify_paypal_signature(
+            payload=payload,
+            headers=headers
+        )
+    except Exception:
+        # Track signature verification failures
+        increment_webhook_failure(provider='paypal', error_type='signature_error')
+        raise
 
     event_id = payload.get('id')
     event_type = payload.get('event_type')
