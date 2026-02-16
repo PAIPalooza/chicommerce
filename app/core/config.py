@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     AWS_REGION: str = "us-east-1"
-    S3_BUCKET_NAME: str = "chicommerce-previews"
+    S3_BUCKET_NAME: str = "zerocommerce-previews"
     S3_ENDPOINT_URL: Optional[str] = None  # For local testing with MinIO/LocalStack
 
     # Preview Settings

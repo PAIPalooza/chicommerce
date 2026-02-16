@@ -1,4 +1,4 @@
-# ChiCommerce Backend - Production Readiness Tracking
+# ZeroCommerce Backend - Production Readiness Tracking
 
 > **Platform Vision:** Microservices-only eCommerce platform for sites, apps, and experiences. Must be robust, type-safe, and deliver exceptional developer experience.
 
@@ -989,7 +989,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/chicommerce
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/zerocommerce
       - REDIS_URL=redis://redis:6379/0
     depends_on:
       db:
@@ -1005,7 +1005,7 @@ services:
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=chicommerce
+      - POSTGRES_DB=zerocommerce
     ports:
       - "5432:5432"
     volumes:
@@ -1029,7 +1029,7 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/chicommerce
+      - DATABASE_URL=postgresql+psycopg2://postgres:postgres@db:5432/zerocommerce
     depends_on:
       db:
         condition: service_healthy
@@ -1060,7 +1060,7 @@ jobs:
         image: postgres:15
         env:
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: chicommerce_test
+          POSTGRES_DB: zerocommerce_test
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -1099,7 +1099,7 @@ jobs:
 
     - name: Run tests
       env:
-        DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/chicommerce_test
+        DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/zerocommerce_test
         REDIS_URL: redis://localhost:6379/0
         SECRET_KEY: test-secret-key
         ADMIN_API_KEY: test-admin-key
@@ -1126,7 +1126,7 @@ jobs:
       with:
         context: .
         push: false
-        tags: chicommerce:${{ github.sha }}
+        tags: zerocommerce:${{ github.sha }}
         cache-from: type=gha
         cache-to: type=gha,mode=max
 ```
@@ -1137,10 +1137,10 @@ jobs:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chicommerce-api
-  namespace: chicommerce
+  name: zerocommerce-api
+  namespace: zerocommerce
   labels:
-    app: chicommerce-api
+    app: zerocommerce-api
 spec:
   replicas: 3
   strategy:
@@ -1150,15 +1150,15 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: chicommerce-api
+      app: zerocommerce-api
   template:
     metadata:
       labels:
-        app: chicommerce-api
+        app: zerocommerce-api
     spec:
       containers:
       - name: api
-        image: chicommerce:latest
+        image: zerocommerce:latest
         ports:
         - containerPort: 8000
           name: http
@@ -1166,17 +1166,17 @@ spec:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: chicommerce-secrets
+              name: zerocommerce-secrets
               key: database-url
         - name: REDIS_URL
           valueFrom:
             secretKeyRef:
-              name: chicommerce-secrets
+              name: zerocommerce-secrets
               key: redis-url
         - name: SECRET_KEY
           valueFrom:
             secretKeyRef:
-              name: chicommerce-secrets
+              name: zerocommerce-secrets
               key: secret-key
         resources:
           requests:
@@ -1203,13 +1203,13 @@ spec:
           failureThreshold: 3
       initContainers:
       - name: migrations
-        image: chicommerce:latest
+        image: zerocommerce:latest
         command: ["alembic", "upgrade", "head"]
         env:
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: chicommerce-secrets
+              name: zerocommerce-secrets
               key: database-url
 ```
 
@@ -1630,8 +1630,8 @@ logger = structlog.get_logger()
 # app/core/exceptions.py
 from typing import Any, Optional
 
-class ChiCommerceException(Exception):
-    """Base exception for all ChiCommerce errors"""
+class ZeroCommerceException(Exception):
+    """Base exception for all ZeroCommerce errors"""
 
     def __init__(
         self,
@@ -1646,7 +1646,7 @@ class ChiCommerceException(Exception):
         self.details = details or {}
         super().__init__(self.message)
 
-class ProductNotFoundError(ChiCommerceException):
+class ProductNotFoundError(ZeroCommerceException):
     def __init__(self, product_id: UUID):
         super().__init__(
             message=f"Product {product_id} not found",
@@ -1655,7 +1655,7 @@ class ProductNotFoundError(ChiCommerceException):
             details={"product_id": str(product_id)}
         )
 
-class InsufficientStockError(ChiCommerceException):
+class InsufficientStockError(ZeroCommerceException):
     def __init__(self, product_id: UUID, requested: int, available: int):
         super().__init__(
             message=f"Insufficient stock for product {product_id}",
@@ -1668,7 +1668,7 @@ class InsufficientStockError(ChiCommerceException):
             }
         )
 
-class PaymentFailedError(ChiCommerceException):
+class PaymentFailedError(ZeroCommerceException):
     def __init__(self, reason: str):
         super().__init__(
             message=f"Payment failed: {reason}",
@@ -1687,14 +1687,14 @@ import structlog
 
 logger = structlog.get_logger()
 
-async def chicommerce_exception_handler(
+async def zerocommerce_exception_handler(
     request: Request,
-    exc: ChiCommerceException
+    exc: ZeroCommerceException
 ) -> JSONResponse:
-    """Handle custom ChiCommerce exceptions"""
+    """Handle custom ZeroCommerce exceptions"""
 
     logger.error(
-        "chicommerce_error",
+        "zerocommerce_error",
         error_code=exc.error_code,
         message=exc.message,
         details=exc.details,
@@ -1747,11 +1747,11 @@ async def global_exception_handler(
 
 # app/main.py
 from app.core.error_handlers import (
-    chicommerce_exception_handler,
+    zerocommerce_exception_handler,
     global_exception_handler
 )
 
-app.add_exception_handler(ChiCommerceException, chicommerce_exception_handler)
+app.add_exception_handler(ZeroCommerceException, zerocommerce_exception_handler)
 app.add_exception_handler(Exception, global_exception_handler)
 ```
 
@@ -1869,7 +1869,7 @@ async def delete_product(
             product_id=str(product_id),
             error=str(e)
         )
-        raise ChiCommerceException(
+        raise ZeroCommerceException(
             message="Failed to delete product",
             error_code="PRODUCT_DELETION_FAILED",
             status_code=500,
@@ -2482,7 +2482,7 @@ docs/
 │   ├── checkout-flow.md
 │   └── customization.md
 └── postman/
-    └── chicommerce-collection.json
+    └── zerocommerce-collection.json
 ```
 
 **Enhanced Endpoint Documentation:**
@@ -2506,7 +2506,7 @@ docs/
     ### Example Usage
 
     ```bash
-    curl -X POST "https://api.chicommerce.com/api/v1/products" \\
+    curl -X POST "https://api.zerocommerce.com/api/v1/products" \\
       -H "X-API-Key: your-api-key" \\
       -H "Content-Type: application/json" \\
       -d '{
@@ -2672,7 +2672,7 @@ All errors follow this format:
 
 # Webhook Events
 
-ChiCommerce sends webhook events to notify your system of important events.
+ZeroCommerce sends webhook events to notify your system of important events.
 
 ## Setup
 
@@ -2728,8 +2728,8 @@ def verify_webhook(payload: bytes, signature: str, secret: str) -> bool:
 ```json
 {
   "info": {
-    "name": "ChiCommerce API",
-    "description": "Complete API collection for ChiCommerce",
+    "name": "ZeroCommerce API",
+    "description": "Complete API collection for ZeroCommerce",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "auth": {
@@ -3019,7 +3019,7 @@ groups:
 ```json
 {
   "dashboard": {
-    "title": "ChiCommerce API Performance",
+    "title": "ZeroCommerce API Performance",
     "panels": [
       {
         "title": "Request Rate",
@@ -3224,7 +3224,7 @@ class PreviewRenderer:
 from celery import Celery
 
 celery_app = Celery(
-    'chicommerce',
+    'zerocommerce',
     broker='redis://localhost:6379/0',
     backend='redis://localhost:6379/0'
 )

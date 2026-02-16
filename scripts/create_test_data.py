@@ -1,5 +1,5 @@
 """
-Script to create test data for the ChiCommerce API.
+Script to create test data for the ZeroCommerce API.
 """
 import json
 from uuid import uuid4

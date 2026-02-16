@@ -1,4 +1,4 @@
-# ChiCommerce Coding Standards
+# ZeroCommerce Coding Standards
 
 ## Table of Contents
 1. [Introduction](#introduction)
@@ -14,12 +14,12 @@
 
 ## Introduction
 
-This document outlines the coding standards and best practices for the ChiCommerce project, an open-source eCommerce API for customized products. These standards extend and specialize the global Semantic Seed Coding Standards (SSCS) for our specific domain.
+This document outlines the coding standards and best practices for the ZeroCommerce project, an open-source eCommerce API for customized products. These standards extend and specialize the global Semantic Seed Coding Standards (SSCS) for our specific domain.
 
 ## Project Structure
 
 ```
-chicommerce/
+ZeroCommerce/
 ├── alembic/                  # Database migrations
 ├── app/
 │   ├── api/                  # API routes
@@ -249,8 +249,8 @@ chicommerce/
 2. **Setup**:
    ```bash
    # Clone the repository
-   git clone https://github.com/your-org/chicommerce.git
-   cd chicommerce
+   git clone https://github.com/your-org/ZeroCommerce.git
+   cd ZeroCommerce
    
    # Create and activate virtual environment
    python -m venv venv

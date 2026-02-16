@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document provides comprehensive guidance for deploying ChiCommerce with TLS/HTTPS enforcement and API key authentication for admin routes. The implementation follows OWASP security best practices and includes multiple layers of security.
+This document provides comprehensive guidance for deploying ZeroCommerce with TLS/HTTPS enforcement and API key authentication for admin routes. The implementation follows OWASP security best practices and includes multiple layers of security.
 
 ## Table of Contents
 
@@ -134,7 +134,7 @@ HSTS_PRELOAD=false
 
 ### Option 1: Nginx Reverse Proxy (Recommended)
 
-Create `/etc/nginx/sites-available/chicommerce`:
+Create `/etc/nginx/sites-available/zerocommerce`:
 
 ```nginx
 # HTTP server - redirect to HTTPS
@@ -186,7 +186,7 @@ server {
 
 Enable the site:
 ```bash
-sudo ln -s /etc/nginx/sites-available/chicommerce /etc/nginx/sites-enabled/
+sudo ln -s /etc/nginx/sites-available/zerocommerce /etc/nginx/sites-enabled/
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -247,14 +247,14 @@ services:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
       - "./letsencrypt:/letsencrypt"
 
-  chicommerce:
+  zerocommerce:
     build: .
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.chicommerce.rule=Host(`api.yourdomain.com`)"
-      - "traefik.http.routers.chicommerce.entrypoints=websecure"
-      - "traefik.http.routers.chicommerce.tls.certresolver=letsencrypt"
-      - "traefik.http.services.chicommerce.loadbalancer.server.port=8000"
+      - "traefik.http.routers.zerocommerce.rule=Host(`api.yourdomain.com`)"
+      - "traefik.http.routers.zerocommerce.entrypoints=websecure"
+      - "traefik.http.routers.zerocommerce.tls.certresolver=letsencrypt"
+      - "traefik.http.services.zerocommerce.loadbalancer.server.port=8000"
     environment:
       - TLS_ENABLED=true
       - HTTPS_REDIRECT_ENABLED=true
@@ -319,7 +319,7 @@ new_key=$(python3 -c "from app.core.security import generate_api_key; print(gene
 echo "ADMIN_API_KEY=$new_key" >> .env
 
 # 3. Restart application
-sudo systemctl restart chicommerce
+sudo systemctl restart zerocommerce
 
 # 4. Update all admin clients with new key
 
@@ -397,7 +397,7 @@ sudo apt-get update
 sudo apt-get install nginx python3-pip postgresql redis-server
 
 # 2. Setup application
-cd /opt/chicommerce
+cd /opt/zerocommerce
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
@@ -412,22 +412,22 @@ alembic upgrade head
 # 5. Configure Nginx (see above)
 
 # 6. Create systemd service
-sudo nano /etc/systemd/system/chicommerce.service
+sudo nano /etc/systemd/system/zerocommerce.service
 ```
 
 Service file content:
 ```ini
 [Unit]
-Description=ChiCommerce API
+Description=ZeroCommerce API
 After=network.target postgresql.service redis.service
 
 [Service]
 Type=notify
 User=www-data
 Group=www-data
-WorkingDirectory=/opt/chicommerce
-Environment="PATH=/opt/chicommerce/venv/bin"
-ExecStart=/opt/chicommerce/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4
+WorkingDirectory=/opt/zerocommerce
+Environment="PATH=/opt/zerocommerce/venv/bin"
+ExecStart=/opt/zerocommerce/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 --workers 4
 Restart=always
 
 [Install]
@@ -436,8 +436,8 @@ WantedBy=multi-user.target
 
 ```bash
 # 7. Start services
-sudo systemctl enable chicommerce
-sudo systemctl start chicommerce
+sudo systemctl enable zerocommerce
+sudo systemctl start zerocommerce
 sudo systemctl enable nginx
 sudo systemctl restart nginx
 ```
@@ -492,7 +492,7 @@ services:
   db:
     image: postgres:15
     environment:
-      POSTGRES_DB: chicommerce
+      POSTGRES_DB: zerocommerce
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
@@ -515,20 +515,20 @@ volumes:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: chicommerce
+  name: zerocommerce
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: chicommerce
+      app: zerocommerce
   template:
     metadata:
       labels:
-        app: chicommerce
+        app: zerocommerce
     spec:
       containers:
-      - name: chicommerce
-        image: chicommerce:latest
+      - name: zerocommerce
+        image: zerocommerce:latest
         ports:
         - containerPort: 8000
         env:
@@ -541,12 +541,12 @@ spec:
         - name: ADMIN_API_KEY
           valueFrom:
             secretKeyRef:
-              name: chicommerce-secrets
+              name: zerocommerce-secrets
               key: admin-api-key
         - name: DATABASE_URL
           valueFrom:
             secretKeyRef:
-              name: chicommerce-secrets
+              name: zerocommerce-secrets
               key: database-url
         livenessProbe:
           httpGet:
@@ -565,10 +565,10 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: chicommerce-service
+  name: zerocommerce-service
 spec:
   selector:
-    app: chicommerce
+    app: zerocommerce
   ports:
   - port: 80
     targetPort: 8000
@@ -578,7 +578,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: chicommerce-ingress
+  name: zerocommerce-ingress
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt-prod"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
@@ -586,7 +586,7 @@ spec:
   tls:
   - hosts:
     - api.yourdomain.com
-    secretName: chicommerce-tls
+    secretName: zerocommerce-tls
   rules:
   - host: api.yourdomain.com
     http:
@@ -595,7 +595,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: chicommerce-service
+            name: zerocommerce-service
             port:
               number: 80
 ```
@@ -716,9 +716,9 @@ echo $ADMIN_API_KEY
 
 **Solution 3: Check logs for details**
 ```bash
-journalctl -u chicommerce -f  # For systemd
-docker logs -f chicommerce    # For Docker
-kubectl logs -f deployment/chicommerce  # For Kubernetes
+journalctl -u zerocommerce -f  # For systemd
+docker logs -f zerocommerce    # For Docker
+kubectl logs -f deployment/zerocommerce  # For Kubernetes
 ```
 
 ### Issue: HSTS preventing access to development server
@@ -824,7 +824,7 @@ Firefox:
 
 ## Conclusion
 
-Following this deployment guide ensures that your ChiCommerce application is deployed with enterprise-grade security:
+Following this deployment guide ensures that your ZeroCommerce application is deployed with enterprise-grade security:
 
 - All traffic encrypted with TLS
 - Admin operations protected with API key authentication

@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="ChiCommerce API",
-    description="eCommerce API for customized products",
+    title="ZeroCommerce API",
+    description="Open source eCommerce API for customized products - built with FastAPI, PostgreSQL, and Redis",
     version="0.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
@@ -37,7 +37,7 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     """Initialize services on application startup."""
-    logger.info("Starting ChiCommerce API...")
+    logger.info("Starting ZeroCommerce API...")
     try:
         await init_redis()
         logger.info("Redis initialized successfully")
@@ -50,7 +50,7 @@ async def startup_event():
 @app.on_event("shutdown")
 async def shutdown_event():
     """Clean up services on application shutdown."""
-    logger.info("Shutting down ChiCommerce API...")
+    logger.info("Shutting down ZeroCommerce API...")
     try:
         await close_redis()
         logger.info("Redis connection closed")
@@ -122,7 +122,7 @@ def root() -> Any:
     Root endpoint with API information.
     """
     return {
-        "name": "ChiCommerce API",
+        "name": "ZeroCommerce API",
         "version": "0.1.0",
         "docs": "/api/docs",
     }

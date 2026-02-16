@@ -32,7 +32,7 @@ def test_db_engine():
     db_url = str(TEST_DATABASE_URL)
     
     # Connect to the default postgres database to create our test database
-    default_db_url = db_url.replace("/chicommerce_test", "/postgres")
+    default_db_url = db_url.replace("/zerocommerce_test", "/postgres")
     default_engine = create_engine(
         default_db_url,
         isolation_level="AUTOCOMMIT",
@@ -44,9 +44,9 @@ def test_db_engine():
         # End any open transaction
         conn.execute(text("COMMIT"))
         # Drop the test database if it exists
-        conn.execute(text("DROP DATABASE IF EXISTS chicommerce_test"))
+        conn.execute(text("DROP DATABASE IF EXISTS zerocommerce_test"))
         # Create a fresh test database
-        conn.execute(text("CREATE DATABASE chicommerce_test"))
+        conn.execute(text("CREATE DATABASE zerocommerce_test"))
     
     # Now connect to the test database
     engine = create_engine(
@@ -74,7 +74,7 @@ def test_db_engine():
             cur.execute("""
                 SELECT pg_terminate_backend(pg_stat_activity.pid)
                 FROM pg_stat_activity
-                WHERE pg_stat_activity.datname = 'chicommerce_test'
+                WHERE pg_stat_activity.datname = 'zerocommerce_test'
                 AND pid <> pg_backend_pid();
             """)
         
@@ -83,7 +83,7 @@ def test_db_engine():
         
         # Drop the database in a new transaction
         with conn.connection.cursor() as cur:
-            cur.execute("DROP DATABASE IF EXISTS chicommerce_test")
+            cur.execute("DROP DATABASE IF EXISTS zerocommerce_test")
             # Commit the DROP DATABASE command
             conn.connection.commit()
     
