@@ -4,13 +4,17 @@ Main FastAPI application.
 import logging
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from app.api.v1.api import api_router
 from app.core.config import settings
+from app.core.redis import init_redis, close_redis
+from app.middleware.security import HTTPSRedirectMiddleware, SecurityHeadersMiddleware
+from app.middleware.metrics import MetricsMiddleware
 
 # Configure logging
 logging.basicConfig(
@@ -21,11 +25,52 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="ChiCommerce API",
-    description="eCommerce API for customized products",
+    title="ZeroCommerce API",
+    description="Open source eCommerce API for customized products - built with FastAPI, PostgreSQL, and Redis",
     version="0.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
+)
+
+
+# Startup event handler
+@app.on_event("startup")
+async def startup_event():
+    """Initialize services on application startup."""
+    logger.info("Starting ZeroCommerce API...")
+    try:
+        await init_redis()
+        logger.info("Redis initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize Redis: {str(e)}")
+        # Continue startup even if Redis fails - graceful degradation
+
+
+# Shutdown event handler
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Clean up services on application shutdown."""
+    logger.info("Shutting down ZeroCommerce API...")
+    try:
+        await close_redis()
+        logger.info("Redis connection closed")
+    except Exception as e:
+        logger.error(f"Error closing Redis connection: {str(e)}")
+
+# Set up security middleware (order matters - these should be first)
+# Security headers should be applied to all responses
+app.add_middleware(
+    SecurityHeadersMiddleware,
+    enabled=settings.SECURITY_HEADERS_ENABLED,
+    hsts_max_age=settings.HSTS_MAX_AGE,
+    hsts_include_subdomains=settings.HSTS_INCLUDE_SUBDOMAINS,
+    hsts_preload=settings.HSTS_PRELOAD,
+)
+
+# HTTPS redirect should happen before other processing
+app.add_middleware(
+    HTTPSRedirectMiddleware,
+    enabled=settings.HTTPS_REDIRECT_ENABLED,
 )
 
 # Set up CORS middleware
@@ -36,6 +81,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Add metrics middleware to track all HTTP requests
+app.add_middleware(MetricsMiddleware)
 
 # Custom error handler for validation errors
 @app.exception_handler(RequestValidationError)
@@ -74,10 +122,31 @@ def root() -> Any:
     Root endpoint with API information.
     """
     return {
-        "name": "ChiCommerce API",
+        "name": "ZeroCommerce API",
         "version": "0.1.0",
         "docs": "/api/docs",
     }
+
+# Metrics endpoint for Prometheus scraping
+@app.get("/metrics", tags=["monitoring"])
+def metrics() -> Response:
+    """
+    Prometheus metrics endpoint.
+
+    Exposes metrics in Prometheus text format for scraping by monitoring systems.
+    Includes:
+    - http_requests_total: Total HTTP requests by method/endpoint/status
+    - http_request_duration_seconds: HTTP request duration histogram
+    - http_5xx_errors_total: Total HTTP 5xx errors
+    - render_jobs_total: Total render jobs by status
+    - failed_webhooks_total: Total failed webhook deliveries
+    - database_connections_active: Active database connections
+
+    Returns:
+        Response with Prometheus metrics in text format
+    """
+    metrics_output = generate_latest()
+    return Response(content=metrics_output, media_type=CONTENT_TYPE_LATEST)
 
 if __name__ == "__main__":
     import uvicorn
