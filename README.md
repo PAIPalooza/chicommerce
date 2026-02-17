@@ -1,10 +1,10 @@
-# ChiCommerce
+# ZeroCommerce
 
-Open source eCommerce API for customized products.
+Open source eCommerce API for customized products - built with FastAPI, PostgreSQL, and Redis.
 
 ## Project Overview
 
-ChiCommerce is a robust, scalable backend API service that powers an eCommerce platform specialized in user-driven product customization (e.g., custom-printed apparel, engraved gifts, build-your-own gift boxes). This backend supports product templating, customization options, cart and checkout flows, payment integration, order management, and fulfillment workflows—without requiring user authentication.
+ZeroCommerce is a robust, scalable backend API service that powers an eCommerce platform specialized in user-driven product customization (e.g., custom-printed apparel, engraved gifts, build-your-own gift boxes). This backend supports product templating, customization options, cart and checkout flows, payment integration, order management, and fulfillment workflows—without requiring user authentication.
 
 ## Features
 
@@ -38,8 +38,8 @@ ChiCommerce is a robust, scalable backend API service that powers an eCommerce p
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/PAIPalooza/chicommerce.git
-   cd chicommerce
+   git clone https://github.com/AINative-Studio/ZeroCommerce.git
+   cd ZeroCommerce
    ```
 
 2. Create and activate a virtual environment:
@@ -58,6 +58,17 @@ ChiCommerce is a robust, scalable backend API service that powers an eCommerce p
    cp .env.example .env
    # Edit .env with your configuration
    ```
+
+   Required environment variables:
+   - `DATABASE_URL`: PostgreSQL connection string
+   - `SECRET_KEY`: Secret key for JWT token generation
+   - `ADMIN_API_KEY`: API key for admin endpoints
+   - `AINATIVE_API_TOKEN`: AINative API authentication token
+   - `ZERODB_PROJECT_ID`: Your ZeroDB project identifier
+
+   Optional AINative authentication (for username/password flow):
+   - `AINATIVE_USERNAME`: AINative account username
+   - `AINATIVE_PASSWORD`: AINative account password
 
 5. Run database migrations:
    ```bash
@@ -78,7 +89,7 @@ ChiCommerce is a robust, scalable backend API service that powers an eCommerce p
 ### Project Structure
 
 ```
-chicommerce/
+ZeroCommerce/
 ├── alembic/                  # Database migrations
 ├── app/
 │   ├── api/                  # API routes

@@ -1,0 +1,55 @@
+#!/bin/bash
+# user-prompt-submit-hook.sh
+# Fires when user submits a message
+#
+# Available environment variables:
+# - PROMPT: The user's message
+# - SESSION_ID: Current session identifier
+# - TIMESTAMP: Unix timestamp
+#
+# Usage: Copy to user-prompt-submit-hook.sh and make executable
+
+# Example: Auto-save conversation context every 10 messages
+MESSAGE_COUNT_FILE="/tmp/claude_message_count_$$"
+
+# Increment counter
+if [ -f "$MESSAGE_COUNT_FILE" ]; then
+    COUNT=$(cat "$MESSAGE_COUNT_FILE")
+    COUNT=$((COUNT + 1))
+else
+    COUNT=1
+fi
+echo "$COUNT" > "$MESSAGE_COUNT_FILE"
+
+# Every 10 messages, trigger memory save
+if [ $((COUNT % 10)) -eq 0 ]; then
+    echo "[Hook] Auto-saving conversation context (message #$COUNT)"
+
+    # Get auth token (you'd store this securely)
+    TOKEN="${ZERODB_TOKEN:-}"
+
+    if [ -n "$TOKEN" ]; then
+        curl -s -X POST http://localhost:8080/api/v1/memory \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"content\": \"Auto-saved conversation context at message $COUNT\",
+                \"metadata\": {
+                    \"message_count\": $COUNT,
+                    \"session_id\": \"$SESSION_ID\",
+                    \"timestamp\": \"$TIMESTAMP\",
+                    \"auto_save\": true
+                },
+                \"tags\": [\"auto-save\", \"session-context\"],
+                \"priority\": \"medium\"
+            }" > /dev/null 2>&1
+
+        echo "[Hook] Context saved to ZeroDB"
+    fi
+fi
+
+# Example: Log user prompts for analytics
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ): USER_PROMPT_LENGTH=${#PROMPT}" >> /tmp/claude_analytics.log
+
+# Always exit 0 to allow message to proceed
+exit 0

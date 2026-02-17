@@ -2,6 +2,8 @@ from app.models.product import Product
 from app.models.template import Template, CustomizationZone
 from app.models.option_set import OptionSet, Option
 from app.models.cart import Cart, CartItem, CustomizationSession
+from app.models.order import Order, OrderItem, PaymentEvent, OrderStatus, PaymentProvider
+from app.models.webhook_log import WebhookLog
 
 # Import all models to ensure they are registered with SQLAlchemy
 __all__ = [
@@ -12,5 +14,11 @@ __all__ = [
     'Option',
     'Cart',
     'CartItem',
-    'CustomizationSession'
+    'CustomizationSession',
+    'Order',
+    'OrderItem',
+    'PaymentEvent',
+    'OrderStatus',
+    'PaymentProvider',
+    'WebhookLog'
 ]
