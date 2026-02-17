@@ -4,9 +4,11 @@ Webhook logs audit endpoint.
 This module provides endpoints for auditing webhook delivery attempts,
 allowing administrators to troubleshoot delivery failures and monitor
 webhook performance.
+
+All endpoints require admin authentication via JWT bearer token or API key (deprecated).
 """
 import logging
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import desc
@@ -30,7 +32,7 @@ def get_webhook_logs(
     limit: int = Query(50, ge=1, le=100, description="Number of items to return (max 100)"),
     offset: int = Query(0, ge=0, description="Number of items to skip"),
     db: Session = Depends(deps.get_db_session),
-    api_key: str = Depends(deps.get_admin_key)
+    current_user: Dict = Depends(deps.get_admin_user)
 ) -> WebhookLogListResponse:
     """
     Retrieve webhook logs with optional filtering and pagination.
@@ -46,16 +48,22 @@ def get_webhook_logs(
         limit: Maximum number of logs to return (1-100, default: 50)
         offset: Number of logs to skip for pagination (default: 0)
         db: Database session (injected)
-        api_key: Admin API key for authentication (injected)
+        current_user: Current authenticated admin user (injected)
 
     Returns:
         Paginated list of webhook logs with metadata
 
     Raises:
-        HTTPException: 401 if API key is missing, 403 if API key is invalid
+        HTTPException: 401 if not authenticated, 403 if not admin role
+
+    Authentication:
+        Requires ADMIN role via JWT bearer token or API key (deprecated)
+        - Preferred: Authorization: Bearer <jwt_token>
+        - Deprecated: X-API-Key: <admin_key>
 
     Example:
         GET /api/v1/webhooklogs?event=order.created&limit=20&offset=0
+        Headers: Authorization: Bearer eyJhbGc...
     """
     # Build query
     query = db.query(WebhookLog)

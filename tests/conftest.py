@@ -16,6 +16,7 @@ from app.api import deps
 from app.db.session import Base
 from app.core.config import settings
 from app.services.cache_service import get_cache_service
+from app.services.zerodb_service import ZeroDBService, get_zerodb_service
 
 # Test database URL from settings
 TEST_DATABASE_URL = settings.TEST_DATABASE_URL
@@ -246,7 +247,7 @@ def sample_template(db_session: Session, sample_product_id: str) -> Any:
     Create a sample template in the database.
     """
     from app.models.template import Template, CustomizationZone
-    
+
     template = Template(
         product_id=sample_product_id,
         version=1,
@@ -258,10 +259,10 @@ def sample_template(db_session: Session, sample_product_id: str) -> Any:
         },
         is_default=True
     )
-    
+
     db_session.add(template)
     db_session.flush()  # Flush to get the template ID
-    
+
     # Add customization zones
     zones = [
         CustomizationZone(
@@ -279,8 +280,76 @@ def sample_template(db_session: Session, sample_product_id: str) -> Any:
             order_index=1
         )
     ]
-    
+
     db_session.add_all(zones)
     db_session.commit()
     db_session.refresh(template)
     return template
+
+
+@pytest.fixture(scope="function")
+def mock_zerodb() -> MagicMock:
+    """
+    Create a mock ZeroDB service for testing session operations.
+
+    Returns:
+        Mock ZeroDBService with all methods mocked
+    """
+    mock_service = MagicMock(spec=ZeroDBService)
+
+    # Mock async methods with AsyncMock
+    mock_service.create_row = AsyncMock()
+    mock_service.query_rows = AsyncMock()
+    mock_service.get_row = AsyncMock()
+    mock_service.update_row = AsyncMock()
+    mock_service.delete_row = AsyncMock()
+
+    return mock_service
+
+
+@pytest.fixture(scope="function")
+def client_with_zerodb_mock(db_session, mock_zerodb) -> Generator[TestClient, None, None]:
+    """
+    Create a test client with both database and ZeroDB mock overrides.
+
+    Args:
+        db_session: Test database session
+        mock_zerodb: Mock ZeroDB service
+
+    Yields:
+        FastAPI test client with mocked ZeroDB
+    """
+    def _get_test_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    def _get_mock_zerodb():
+        return mock_zerodb
+
+    # Create a mock cache service
+    async def _get_mock_cache():
+        mock_cache = AsyncMock()
+        mock_cache.get.return_value = None
+        mock_cache.set.return_value = True
+        mock_cache.delete.return_value = 1
+        mock_cache.invalidate_pattern.return_value = 0
+        return mock_cache
+
+    # Override dependencies
+    app.dependency_overrides[deps.get_db_session] = _get_test_db
+    app.dependency_overrides[get_zerodb_service] = _get_mock_zerodb
+    app.dependency_overrides[get_cache_service] = _get_mock_cache
+
+    # Set default admin auth
+    def _get_test_admin_key():
+        return "test-admin-key"
+    app.dependency_overrides[deps.get_admin_key] = _get_test_admin_key
+
+    client = TestClient(app)
+
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()
