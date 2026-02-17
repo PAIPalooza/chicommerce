@@ -36,6 +36,7 @@ class Template(Base):
     # Relationships
     product = relationship("Product", back_populates="templates")
     customization_zones = relationship("CustomizationZone", back_populates="template", cascade="all, delete-orphan")
+    customization_sessions = relationship("CustomizationSession", back_populates="template")
 
     # Constraints
     __table_args__ = (

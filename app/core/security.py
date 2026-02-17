@@ -13,16 +13,20 @@ from app.core.config import settings
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-def verify_api_key(api_key: str) -> bool:
+def verify_api_key(api_key: Optional[str]) -> bool:
     """
     Verify if the provided API key is valid.
-    
+
     Args:
         api_key: The API key to verify
-        
+
     Returns:
         True if valid, False otherwise
     """
+    # Handle None and empty string cases
+    if not api_key:
+        return False
+
     # In a real-world scenario, this would check against a database of valid API keys
     # For simplicity, we're just checking against the configured admin API key
     return api_key == settings.ADMIN_API_KEY
