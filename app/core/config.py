@@ -35,6 +35,23 @@ class Settings(BaseSettings):
     CELERY_BROKER_URL: str = "redis://localhost:6379/0"
     CELERY_RESULT_BACKEND: str = "redis://localhost:6379/0"
 
+    # AINative Authentication
+    AINATIVE_API_URL: str = "https://api.ainative.studio/"
+    AINATIVE_API_TOKEN: str
+    AINATIVE_USERNAME: Optional[str] = None
+    AINATIVE_PASSWORD: Optional[str] = None
+
+    # ZeroDB
+    ZERODB_PROJECT_ID: Optional[str] = None
+    ZERODB_HOST: Optional[str] = None
+    ZERODB_PORT: Optional[int] = None
+    ZERODB_DATABASE: Optional[str] = None
+    ZERODB_USERNAME: Optional[str] = None
+    ZERODB_PASSWORD: Optional[str] = None
+    ZERODB_URL: Optional[str] = None
+    ZERODB_TIMEOUT: int = 30  # Request timeout in seconds
+    ZERODB_MAX_RETRIES: int = 3  # Maximum retry attempts
+
     # S3 Storage Configuration
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
