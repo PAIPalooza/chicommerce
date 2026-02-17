@@ -123,3 +123,18 @@ class CartResponse(BaseModel):
 
     class Config:
         orm_mode = True
+
+
+class SessionStateResponse(BaseModel):
+    """Response schema for session state retrieval."""
+    session_key: str
+    product_id: UUID
+    template_id: UUID
+    options: Dict[str, Any]
+    template_version: Optional[int] = None
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        orm_mode = True

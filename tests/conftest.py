@@ -4,6 +4,7 @@ Test configuration for pytest fixtures.
 import os
 import pytest
 from typing import Dict, Generator, Any
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -14,6 +15,8 @@ from app.main import app
 from app.api import deps
 from app.db.session import Base
 from app.core.config import settings
+from app.services.cache_service import get_cache_service
+from app.services.zerodb_service import ZeroDBService, get_zerodb_service
 
 # Test database URL from settings
 TEST_DATABASE_URL = settings.TEST_DATABASE_URL
@@ -30,7 +33,7 @@ def test_db_engine():
     db_url = str(TEST_DATABASE_URL)
     
     # Connect to the default postgres database to create our test database
-    default_db_url = db_url.replace("/chicommerce_test", "/postgres")
+    default_db_url = db_url.replace("/zerocommerce_test", "/postgres")
     default_engine = create_engine(
         default_db_url,
         isolation_level="AUTOCOMMIT",
@@ -42,9 +45,9 @@ def test_db_engine():
         # End any open transaction
         conn.execute(text("COMMIT"))
         # Drop the test database if it exists
-        conn.execute(text("DROP DATABASE IF EXISTS chicommerce_test"))
+        conn.execute(text("DROP DATABASE IF EXISTS zerocommerce_test"))
         # Create a fresh test database
-        conn.execute(text("CREATE DATABASE chicommerce_test"))
+        conn.execute(text("CREATE DATABASE zerocommerce_test"))
     
     # Now connect to the test database
     engine = create_engine(
@@ -72,7 +75,7 @@ def test_db_engine():
             cur.execute("""
                 SELECT pg_terminate_backend(pg_stat_activity.pid)
                 FROM pg_stat_activity
-                WHERE pg_stat_activity.datname = 'chicommerce_test'
+                WHERE pg_stat_activity.datname = 'zerocommerce_test'
                 AND pid <> pg_backend_pid();
             """)
         
@@ -81,7 +84,7 @@ def test_db_engine():
         
         # Drop the database in a new transaction
         with conn.connection.cursor() as cur:
-            cur.execute("DROP DATABASE IF EXISTS chicommerce_test")
+            cur.execute("DROP DATABASE IF EXISTS zerocommerce_test")
             # Commit the DROP DATABASE command
             conn.connection.commit()
     
@@ -115,14 +118,27 @@ def client(db_session) -> Generator[TestClient, None, None]:
             yield db_session
         finally:
             pass
-    
+
+    # Create a mock cache service that doesn't actually cache
+    async def _get_mock_cache():
+        mock_cache = AsyncMock()
+        # Mock cache always returns None (cache miss)
+        mock_cache.get.return_value = None
+        # Mock cache set/delete/invalidate_pattern always succeed
+        mock_cache.set.return_value = True
+        mock_cache.delete.return_value = 1
+        mock_cache.invalidate_pattern.return_value = 0
+        return mock_cache
+
     # Store the original dependencies
     original_get_db = app.dependency_overrides.get(deps.get_db_session, deps.get_db_session)
     original_get_admin_key = app.dependency_overrides.get(deps.get_admin_key, deps.get_admin_key)
-    
+    original_get_cache = app.dependency_overrides.get(get_cache_service, get_cache_service)
+
     # Set up test dependencies
     app.dependency_overrides[deps.get_db_session] = _get_test_db
-    
+    app.dependency_overrides[get_cache_service] = _get_mock_cache
+
     # Create a test client
     client = TestClient(app)
     
@@ -153,6 +169,8 @@ def client(db_session) -> Generator[TestClient, None, None]:
             app.dependency_overrides[deps.get_db_session] = original_get_db
         if original_get_admin_key != deps.get_admin_key:
             app.dependency_overrides[deps.get_admin_key] = original_get_admin_key
+        if original_get_cache != get_cache_service:
+            app.dependency_overrides[get_cache_service] = original_get_cache
 
 
 @pytest.fixture(scope="function")
@@ -229,7 +247,7 @@ def sample_template(db_session: Session, sample_product_id: str) -> Any:
     Create a sample template in the database.
     """
     from app.models.template import Template, CustomizationZone
-    
+
     template = Template(
         product_id=sample_product_id,
         version=1,
@@ -241,10 +259,10 @@ def sample_template(db_session: Session, sample_product_id: str) -> Any:
         },
         is_default=True
     )
-    
+
     db_session.add(template)
     db_session.flush()  # Flush to get the template ID
-    
+
     # Add customization zones
     zones = [
         CustomizationZone(
@@ -262,8 +280,76 @@ def sample_template(db_session: Session, sample_product_id: str) -> Any:
             order_index=1
         )
     ]
-    
+
     db_session.add_all(zones)
     db_session.commit()
     db_session.refresh(template)
     return template
+
+
+@pytest.fixture(scope="function")
+def mock_zerodb() -> MagicMock:
+    """
+    Create a mock ZeroDB service for testing session operations.
+
+    Returns:
+        Mock ZeroDBService with all methods mocked
+    """
+    mock_service = MagicMock(spec=ZeroDBService)
+
+    # Mock async methods with AsyncMock
+    mock_service.create_row = AsyncMock()
+    mock_service.query_rows = AsyncMock()
+    mock_service.get_row = AsyncMock()
+    mock_service.update_row = AsyncMock()
+    mock_service.delete_row = AsyncMock()
+
+    return mock_service
+
+
+@pytest.fixture(scope="function")
+def client_with_zerodb_mock(db_session, mock_zerodb) -> Generator[TestClient, None, None]:
+    """
+    Create a test client with both database and ZeroDB mock overrides.
+
+    Args:
+        db_session: Test database session
+        mock_zerodb: Mock ZeroDB service
+
+    Yields:
+        FastAPI test client with mocked ZeroDB
+    """
+    def _get_test_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    def _get_mock_zerodb():
+        return mock_zerodb
+
+    # Create a mock cache service
+    async def _get_mock_cache():
+        mock_cache = AsyncMock()
+        mock_cache.get.return_value = None
+        mock_cache.set.return_value = True
+        mock_cache.delete.return_value = 1
+        mock_cache.invalidate_pattern.return_value = 0
+        return mock_cache
+
+    # Override dependencies
+    app.dependency_overrides[deps.get_db_session] = _get_test_db
+    app.dependency_overrides[get_zerodb_service] = _get_mock_zerodb
+    app.dependency_overrides[get_cache_service] = _get_mock_cache
+
+    # Set default admin auth
+    def _get_test_admin_key():
+        return "test-admin-key"
+    app.dependency_overrides[deps.get_admin_key] = _get_test_admin_key
+
+    client = TestClient(app)
+
+    try:
+        yield client
+    finally:
+        app.dependency_overrides.clear()
