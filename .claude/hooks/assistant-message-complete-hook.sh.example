@@ -1,0 +1,46 @@
+#!/bin/bash
+# assistant-message-complete-hook.sh
+# Fires after assistant completes a response
+#
+# Available environment variables:
+# - MESSAGE: The assistant's response
+# - SESSION_ID: Current session identifier
+# - TIMESTAMP: Unix timestamp
+# - TOOL_CALLS: Number of tool calls made
+#
+# Usage: Copy to assistant-message-complete-hook.sh and make executable
+
+# Example: Store important technical responses
+IMPORTANT_KEYWORDS="CRITICAL|ERROR|WARNING|IMPORTANT|TODO|FIXME|BUG"
+
+if echo "$MESSAGE" | grep -qiE "$IMPORTANT_KEYWORDS"; then
+    echo "[Hook] Detected important response, storing in memory"
+
+    TOKEN="${ZERODB_TOKEN:-}"
+
+    if [ -n "$TOKEN" ]; then
+        # Extract first 500 chars as summary
+        SUMMARY=$(echo "$MESSAGE" | head -c 500)
+
+        curl -s -X POST http://localhost:8080/api/v1/memory \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"content\": \"$SUMMARY\",
+                \"metadata\": {
+                    \"session_id\": \"$SESSION_ID\",
+                    \"timestamp\": \"$TIMESTAMP\",
+                    \"tool_calls\": \"$TOOL_CALLS\",
+                    \"flagged\": \"important_response\"
+                },
+                \"tags\": [\"important\", \"auto-flagged\"],
+                \"priority\": \"high\"
+            }" > /dev/null 2>&1
+    fi
+fi
+
+# Example: Track response metrics
+RESPONSE_LENGTH=${#MESSAGE}
+echo "$(date -u +%Y-%m-%dT%H:%M:%SZ): RESPONSE_LENGTH=$RESPONSE_LENGTH TOOL_CALLS=$TOOL_CALLS" >> /tmp/claude_analytics.log
+
+exit 0

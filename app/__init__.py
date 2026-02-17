@@ -1,3 +1,3 @@
 """
-ChiCommerce API package.
+ZeroCommerce API package.
 """
