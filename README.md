@@ -59,6 +59,17 @@ ZeroCommerce is a robust, scalable backend API service that powers an eCommerce 
    # Edit .env with your configuration
    ```
 
+   Required environment variables:
+   - `DATABASE_URL`: PostgreSQL connection string
+   - `SECRET_KEY`: Secret key for JWT token generation
+   - `ADMIN_API_KEY`: API key for admin endpoints
+   - `AINATIVE_API_TOKEN`: AINative API authentication token
+   - `ZERODB_PROJECT_ID`: Your ZeroDB project identifier
+
+   Optional AINative authentication (for username/password flow):
+   - `AINATIVE_USERNAME`: AINative account username
+   - `AINATIVE_PASSWORD`: AINative account password
+
 5. Run database migrations:
    ```bash
    alembic upgrade head
